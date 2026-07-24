@@ -1,0 +1,38 @@
+name: Diagnose Lost Deals
+
+# Audit who moved leads to 💔 Lost and whether a Lost Reason was set.
+# Prints a per-lead list (missing reasons flagged) plus per-mover and
+# per-owner coaching summaries. Read-only — sends nothing, changes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD, PT). Blank = today.'
+        required: false
+        type: string
+      end_date:
+        description: 'End date (YYYY-MM-DD, PT). Blank = same as start date.'
+        required: false
+        type: string
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run lost-deals audit
+        env:
+          CLOSE_API_KEY: ${{ secrets.CLOSE_API_KEY }}
+          START_DATE:    ${{ github.event.inputs.start_date }}
+          END_DATE:      ${{ github.event.inputs.end_date }}
+        run: python diagnose_lost_deals.py
