@@ -36,3 +36,11 @@ jobs:
           START_DATE:    ${{ github.event.inputs.start_date }}
           END_DATE:      ${{ github.event.inputs.end_date }}
         run: python diagnose_lost_deals.py
+
+      - name: Upload shareable reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lost-deals-audit
+          path: reports/
+          if-no-files-found: ignore
