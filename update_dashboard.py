@@ -360,7 +360,7 @@ def passes_funnel_restriction(user_id, funnel, call_date):
 # given date wins. Add new tiers here when revenue goals change — historical
 # dates keep their original target.
 CAPACITY_TARGET_SCHEDULE = [
-    (date(2026, 8, 10), 40),  # Goal reset 66 → 40 (leadership decision, effective Mon 8/10)
+    (date(2026, 8, 10), 42),  # Goal reset 66 → 42 (leadership decision, effective Mon 8/10)
     (date(2026, 6, 22), 66),  # Fully ramped — all reps onboarded
     (date(2026, 6, 15), 44),
     (date(2026, 6, 8),  40),
@@ -392,7 +392,7 @@ ARCHIVE_DIR = os.environ.get("ARCHIVE_DIR", "archive")
 
 CHANGELOG_ENTRIES = [
     {"date": "2026-08-10 9:00 AM PT", "notes": [
-        "Daily New Meetings Goal updated from 66 to 40, effective Monday 8/10. The goal percentage on each day's card (and the red/amber/green thresholds) now calculates against the new 40/day target. Historical days before 8/10 keep their original targets, so past percentages are unchanged.",
+        "Daily New Meetings Goal updated from 66 to 42, effective Monday 8/10. The goal percentage on each day's card (and the red/amber/green thresholds) now calculates against the new 42/day target. Historical days before 8/10 keep their original targets, so past percentages are unchanged.",
     ]},
     {"date": "2026-06-16 1:30 PM PT", "notes": [
         "Dashboard redesign at the top — the Capacity Metrics table has been replaced with a new hero card row showing focused day-by-day stats. Three cards visible at a time: previous day on the left, focused day in the middle, next day on the right. Click the arrows (or click a side card directly) to navigate forward or back across the 13-day window.",
