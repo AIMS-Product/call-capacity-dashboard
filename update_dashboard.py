@@ -281,12 +281,12 @@ LANE_2_REPS = {
     "user_pKEujUcHJfsEyI5lM6L56aXM2s5nNOU994JRjRSlAdA",  # Chris Wanke → "LTF Quiz Calendar - General" (from 05/18)
 }
 LANE_2_REP_NAMES = {
-    "user_Bov31jjnHhENBy8uWNTTL8KKax8VX7o6DugLzBYOHBG": "Lyle Hubbard",
-    "user_WquWudQN7dghZsAPiNY80eJUmg1EadQg2UCQdvgbif7": "Kelly Schrader",
     "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj": "Jason Aaron",
     # Bryan Barcus and Steven Starnes removed from rep details (no longer with company) — user_ids retained in LANE_2_REPS so historical calls still count
     # "LTF Quiz Calendar - General" (user_pKEujUcHJfsEyI5lM6L56aXM2s5nNOU994JRjRSlAdA, Chris Wanke's repurposed calendar) removed from rep details 2026-06-18 — user_id retained in LANE_2_REPS so historical calls still count
     # John Kirk (user_5pAfnzGONQLUVLKqFQVpQ3570YV1gurVCTp1MMgfCDL), Elvis Ellis (user_I0cHZ04mBXXBvbFcnwmsc2KrcMsLsKxqjW8DtJ783Hr), and Cameron Caswell (user_UpJb11fzX2TuFHf7fFyWpfXr84lg2Ui7i7p5CtQkIaW) removed from rep details 2026-07-08 — no longer with company; user_ids retained in LANE_2_REPS + NEW_CALLS_ONLY_REPS (for Elvis / Cameron) so historical call counting & clamp behavior stay consistent
+    # Lyle Hubbard (user_Bov31jjnHhENBy8uWNTTL8KKax8VX7o6DugLzBYOHBG) removed from rep details 2026-08-07 — no longer with company; user_id retained in LANE_2_REPS + NEW_CALLS_ONLY_REPS so historical call counting & clamp behavior stay consistent
+    # Kelly Schrader (user_WquWudQN7dghZsAPiNY80eJUmg1EadQg2UCQdvgbif7) removed from rep details 2026-08-07 — STILL WITH COMPANY, moved to Lane 2 scraper rotation 2026-08-05; now tracked in SCRAPER_SETTERS (EOD Scraper Bookings). user_id retained in LANE_2_REPS + NEW_CALLS_ONLY_REPS so historical call counting & clamp behavior stay consistent
 }
 LANE_2_LEAD = "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj"  # Jason Aaron
 
@@ -310,11 +310,11 @@ ALL_LANE_LEAD      = LANE_1_LEAD  # Christian Hartwell continues as team lead ba
 # calls; showing their full meeting volume creates more noise than signal for
 # sales/marketing leadership during this transition. Verified with head of sales.
 NEW_CALLS_ONLY_REPS = {
-    "user_I0cHZ04mBXXBvbFcnwmsc2KrcMsLsKxqjW8DtJ783Hr",  # Elvis Ellis
-    "user_WquWudQN7dghZsAPiNY80eJUmg1EadQg2UCQdvgbif7",  # Kelly Schrader
-    "user_UpJb11fzX2TuFHf7fFyWpfXr84lg2Ui7i7p5CtQkIaW",  # Cameron Caswell
-    "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj",  # Jason Aaron
-    "user_Bov31jjnHhENBy8uWNTTL8KKax8VX7o6DugLzBYOHBG",  # Lyle Hubbard
+    "user_I0cHZ04mBXXBvbFcnwmsc2KrcMsLsKxqjW8DtJ783Hr",  # Elvis Ellis (departed 2026-07-08; kept for historical clamp consistency)
+    "user_WquWudQN7dghZsAPiNY80eJUmg1EadQg2UCQdvgbif7",  # Kelly Schrader (moved to scraper rotation 2026-08-05; kept — clamp still applies to any owned-lead calls)
+    "user_UpJb11fzX2TuFHf7fFyWpfXr84lg2Ui7i7p5CtQkIaW",  # Cameron Caswell (departed 2026-07-08; kept for historical clamp consistency)
+    "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj",  # Jason Aaron (only actively displayed clamped rep as of 2026-08-07)
+    "user_Bov31jjnHhENBy8uWNTTL8KKax8VX7o6DugLzBYOHBG",  # Lyle Hubbard (departed 2026-08-07; kept for historical clamp consistency)
 }
 
 # ── Date-Based Lane Transitions ──────────────────────────────────────────────
@@ -360,6 +360,7 @@ def passes_funnel_restriction(user_id, funnel, call_date):
 # given date wins. Add new tiers here when revenue goals change — historical
 # dates keep their original target.
 CAPACITY_TARGET_SCHEDULE = [
+    (date(2026, 8, 10), 40),  # Goal reset 66 → 40 (leadership decision, effective Mon 8/10)
     (date(2026, 6, 22), 66),  # Fully ramped — all reps onboarded
     (date(2026, 6, 15), 44),
     (date(2026, 6, 8),  40),
@@ -390,6 +391,9 @@ ARCHIVE_DIR = os.environ.get("ARCHIVE_DIR", "archive")
 # Each entry: {"date": "YYYY-MM-DD HH:MM PT", "notes": ["bullet 1", "bullet 2"]}
 
 CHANGELOG_ENTRIES = [
+    {"date": "2026-08-10 9:00 AM PT", "notes": [
+        "Daily New Meetings Goal updated from 66 to 40, effective Monday 8/10. The goal percentage on each day's card (and the red/amber/green thresholds) now calculates against the new 40/day target. Historical days before 8/10 keep their original targets, so past percentages are unchanged.",
+    ]},
     {"date": "2026-06-16 1:30 PM PT", "notes": [
         "Dashboard redesign at the top — the Capacity Metrics table has been replaced with a new hero card row showing focused day-by-day stats. Three cards visible at a time: previous day on the left, focused day in the middle, next day on the right. Click the arrows (or click a side card directly) to navigate forward or back across the 13-day window.",
         "Each card shows: New Meetings Booked (large headline number), then Total Meetings Booked broken down into F/U Meetings, Reschedule Meetings, and Other (catch-all that includes new calls + anything else). Below that: Open Calendar Slots with Booking Window Missed as a sub-row. Card footer shows New Meetings Target as a percentage with red/amber/green color thresholds.",
@@ -2701,12 +2705,20 @@ LOST_STATUS_LABEL  = "💔 Lost"
 # display name shown in the email; the THIRD is the per-day booking target.
 # List order = display order in the email. Goals can vary per setter over time —
 # update the tuples as they change.
+# Roster per lane2-technical-reference (2026-08-06, §6), confirmed by Stephen 2026-08-07.
+# Two Jacobs — display names disambiguated. Goals default to 3/day.
+# Sydney Boyd + Connor George are pending (no Close user yet) — add here once their
+# Reactivation - Setter Name dropdown values exist in Close.
+# Jennifer Padilla + Juan Cajina removed 2026-08-07 (no longer with company) — their
+# historical bookings still render on past days' data, just not tracked going forward.
 SCRAPER_SETTERS = [
-    ("Vince Bartolini",   "Vince",    3),
-    ("Jacob Hepner",      "Jacob",    3),
-    ("William Nowak",     "William",  3),
-    ("Jennifer Padilla",  "Jennifer", 3),
-    ("Juan Cajina",       "Juan",     3),
+    ("Vince Bartolini",   "Vince",      3),
+    ("Jacob Hepner",      "Jacob Hep.", 3),
+    ("Jacob Herbig",      "Jacob Her.", 3),   # added 2026-08 per tech reference
+    ("Charlie Ingram",    "Charlie",    3),   # added 2026-08 per tech reference
+    ("Pearl Sathekge",    "Pearl",      3),   # added 2026-08 per tech reference
+    ("Kelly Schrader",    "Kelly",      3),   # moved to Lane 2 scraper rotation 2026-08-05
+    ("William Nowak",     "William",    3),   # confirmed include 2026-08-07 (listed as Setter in tech ref, still books)
 ]
 
 # Calendly link titles that identify a scraper-booked Next Steps meeting.
