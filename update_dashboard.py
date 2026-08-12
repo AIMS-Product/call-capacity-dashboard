@@ -249,6 +249,7 @@ LANE_1_REPS = {
     "user_1TKtkacQ7ZMKkcqnmCERikTYWwGltp5XUjEE9Hshple",  # Shreya Bechra
     "user_vyiPzY0qxbLwnW5Ubwae8vY2MLviPuozSTIsEKcyrFE",  # Zac Clover
     "user_3nrtuEmgPYd5VA15NvrxgQxDVNWbhrNSzitEKGwi8s6",  # Ryan Jones (VendHub closer, added 2026-07-10)
+    "user_6kp6k4OcqKqFNrxGjgMUncedjiCYC6JHU8EI28F7etV",  # Luke Herman (added 2026-08-12 — was in Close + lane2-technical-reference roster but missing here; his owned leads were silently excluded, caught via Internal Webinar count discrepancy)
 }
 LANE_1_REP_NAMES = {
     "user_7F059xEinVentOEvkRMP77fWZyvwUiTRTUOuhD11J0e": "Robin Perkins",
@@ -264,6 +265,7 @@ LANE_1_REP_NAMES = {
     "user_1TKtkacQ7ZMKkcqnmCERikTYWwGltp5XUjEE9Hshple": "Shreya Bechra",
     "user_vyiPzY0qxbLwnW5Ubwae8vY2MLviPuozSTIsEKcyrFE": "Zac Clover",
     "user_3nrtuEmgPYd5VA15NvrxgQxDVNWbhrNSzitEKGwi8s6": "Ryan Jones",
+    "user_6kp6k4OcqKqFNrxGjgMUncedjiCYC6JHU8EI28F7etV": "Luke Herman",
     # Chris Wanke removed from rep details (no longer with company) — user_id retained in LANE_1_REPS so historical calls still count
 }
 LANE_1_LEAD = "user_wHm1vcLde4RExd3vv9UOjnms5Oz8ssXg8600mQuxMPb"  # Christian Hartwell
