@@ -335,11 +335,14 @@ LANE_TRANSITIONS = {
 # Outside the funnel allowlist OR outside the date range = call is excluded.
 # Used for overflow situations where someone takes calls but isn't a permanent lane rep.
 LANE_FUNNEL_RESTRICTIONS = {
-    "user_lUjlATIIgFg8mELa0GFzZUj0lG4Cs7PwQsxbi34I6Su": {  # Joe Dysert
-        "funnels": {"Internal Webinar"},
-        "since": date(2026, 5, 18),  # inclusive
-        "until": date(2026, 5, 24),  # inclusive — overflow for week of 5/18
-    },
+    # Joe Dysert (user_lUjlATIIgFg8mELa0GFzZUj0lG4Cs7PwQsxbi34I6Su) restriction
+    # RETIRED 2026-08-12. Original entry: Internal Webinar only, 2026-05-18 → 2026-05-24
+    # (one-week overflow). Side effect: because calls OUTSIDE the window are excluded,
+    # every Joe-owned call after 5/24 was silently dropped ("funnel-restricted" in the
+    # exclusion logs) even after he began taking calls regularly. Per Stephen 2026-08-12,
+    # his calls count normally now. Note: removal also means his 5/18–5/24 overflow week
+    # is no longer funnel-limited if ever recounted, but that week is outside the live
+    # 14-day window (frozen in archives) so displayed history is unaffected.
 }
 
 def passes_funnel_restriction(user_id, funnel, call_date):
