@@ -268,6 +268,25 @@ LANE_1_REP_NAMES = {
 }
 LANE_1_LEAD = "user_wHm1vcLde4RExd3vv9UOjnms5Oz8ssXg8600mQuxMPb"  # Christian Hartwell
 
+# ── EOD name display overrides + non-closer exclusions ───────────────────────
+# Overrides applied on top of fetch_close_users() names wherever the EOD email
+# resolves a user_id (Closers list, VendHub Calls). Two Joes on the team — Close
+# profile names render ambiguously as "Joe", so pin explicit short names.
+USER_DISPLAY_OVERRIDES = {
+    "user_lUjlATIIgFg8mELa0GFzZUj0lG4Cs7PwQsxbi34I6Su": "Joe D.",   # Joe Dysert
+    "user_7HSxi55O8q5jO11khvrTcAGoL2nlcoa3kZ6loAY6i78": "Joe V.",   # Joe Vaughan
+}
+
+# Admins/devs who may create test opportunities — never show as closers on the
+# EOD email. Matched case-insensitively against the resolved Close display name
+# (so it works without hardcoding their user_ids). Includes likely name variants;
+# if one still slips through, their Close profile name differs — add it here.
+NON_CLOSER_NAMES = {
+    "adam wolfe",
+    "stephen olivas",
+    "dom ellis", "dominic ellis",
+}
+
 # Lane 2 reps — Jason Aaron is Lane 2 Lead
 LANE_2_REPS = {
     "user_ulI4pdlkBQGJpFBjSfdf3U2deAXQATVPSAurnbL80T9",  # Bryan Barcus
@@ -3028,8 +3047,22 @@ def build_eod_data(rolling_data, today):
 
     # Fetch today's won opportunities
     today_str = today.isoformat()
-    won_opps  = fetch_todays_won_opps(today_str)
-    log(f"   📧 EOD: {len(won_opps)} won opps today, {today_count} meetings today")
+    user_map  = fetch_close_users()
+    user_map.update(USER_DISPLAY_OVERRIDES)  # "Joe D." / "Joe V." disambiguation (Closers + VendHub)
+    won_opps_raw = fetch_todays_won_opps(today_str)
+
+    # Exclude opps owned by admins/devs (test deals) from ALL EOD numbers —
+    # Deals Closed, Revenue, Closers, and Closed Won Funnel/ICP lines.
+    # Per Stephen 2026-08-13. Each exclusion is logged for visibility.
+    won_opps = []
+    for o in won_opps_raw:
+        owner_name = (user_map.get(o.get("user_id") or "") or "").strip().lower()
+        if owner_name in NON_CLOSER_NAMES:
+            log(f"  📧 EOD: excluding test opp {o.get('id', '?')} owned by '{owner_name}' from all EOD numbers")
+            continue
+        won_opps.append(o)
+    log(f"   📧 EOD: {len(won_opps)} won opps today "
+        f"({len(won_opps_raw) - len(won_opps)} test opps excluded), {today_count} meetings today")
 
     # Combine all lead IDs we need: today's meetings + won opp leads
     won_lead_ids = list(set(o["lead_id"] for o in won_opps if o.get("lead_id")))
@@ -3038,7 +3071,7 @@ def build_eod_data(rolling_data, today):
     email_leads = fetch_leads_for_email(all_lead_ids)
 
     # Fetch user map for resolving user_id → display name on won opps
-    user_map = fetch_close_users()
+    # (user_map fetched above, before the won-opps test-deal filter)
 
     # ── Show rate ─────────────────────────────────────────────────────────────
     # Exclude leads in "Reschedule" status from both numerator and denominator —
@@ -3061,7 +3094,9 @@ def build_eod_data(rolling_data, today):
     total_revenue = sum((o.get("value") or 0) for o in won_opps) / 100
 
     # ── Closers ───────────────────────────────────────────────────────────────
-    # Won opps have a `user_id` (the assigned user). Resolve to display name via user_map.
+    # Won opps have a `user_id` (the assigned user). Resolve to display name via
+    # user_map. Test opps by admins/devs are already filtered out of won_opps
+    # upstream (NON_CLOSER_NAMES), so no per-name check is needed here.
     closer_counts = {}
     for o in won_opps:
         uid  = o.get("user_id") or ""
