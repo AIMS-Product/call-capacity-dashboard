@@ -48,6 +48,11 @@ SEND_ALL_CLEAR = False       # if True, email even when no duplicates are found
 # EOD distro on purpose: TEST_EMAIL_TO = just you. Switch to "EMAIL_TO" (the EOD
 # list) only once you're done testing and actually want the team to receive alerts.
 RECIPIENT_SECRET = "TEST_EMAIL_TO"
+
+# Bookings hosted by these Calendly hosts are ignored entirely — they aren't sales
+# double-bookings (e.g. a customer with two onboarding sessions is fine). Matched
+# case-insensitively against the Calendly host name. Add more names as needed.
+EXCLUDED_HOSTS = {"onboarding team"}
 ALERT_MIN_SEVERITY = "LOW"   # "LOW" = alert on every cluster; "HIGH" = only high-confidence dups
 REQUEST_TIMEOUT = 30
 
@@ -257,9 +262,13 @@ def collect_bookings(cal, org_uri):
     log(f"Fetched {len(events)} active upcoming event(s) in the next {LOOKAHEAD_DAYS} days.")
 
     by_email = defaultdict(list)
+    skipped_hosts = 0
     for ev in events:
         ev_uri = ev.get("uri")
         host = cal.host_name(ev)
+        if host.strip().lower() in EXCLUDED_HOSTS:
+            skipped_hosts += 1
+            continue  # e.g. Onboarding Team — not a sales double-booking
         for inv in cal.invitees(ev_uri):
             email = (inv.get("email") or "").strip().lower()
             if not email:
@@ -276,6 +285,8 @@ def collect_bookings(cal, org_uri):
                 "cancel_url": inv.get("cancel_url"),
                 "reschedule_url": inv.get("reschedule_url"),
             })
+    if skipped_hosts:
+        log(f"Skipped {skipped_hosts} event(s) from excluded hosts: {sorted(EXCLUDED_HOSTS)}")
     return by_email
 
 
