@@ -413,6 +413,9 @@ ARCHIVE_DIR = os.environ.get("ARCHIVE_DIR", "archive")
 # Each entry: {"date": "YYYY-MM-DD HH:MM PT", "notes": ["bullet 1", "bullet 2"]}
 
 CHANGELOG_ENTRIES = [
+    {"date": "2026-08-14 9:00 AM PT", "notes": [
+        "Funnel Details is now one merged section — the In-House / External split has been retired since all funnels were brought in house. Funnels render in one table under a single FUNNEL DETAILS header, with previously-uncategorized rows at the bottom. 'Unknown (Needs Review)' stays pinned last with an amber ⚠ callout — leads showing there need funnel attribution cleaned up in Close.",
+    ]},
     {"date": "2026-08-10 9:00 AM PT", "notes": [
         "Daily New Meetings Goal updated from 66 to 42, effective Monday 8/10. The goal percentage on each day's card (and the red/amber/green thresholds) now calculates against the new 42/day target. Historical days before 8/10 keep their original targets, so past percentages are unchanged.",
     ]},
@@ -1604,14 +1607,18 @@ def target_class(pct):
 
 # ─── Funnel Row Builder ─────────────────────────────────────────────────────
 
-def build_funnel_rows(data, dates, today, daily_goal_map, section_filter):
-    """Build HTML rows for funnels in a given section. Only shows funnels with ≥1 call."""
+def build_funnel_rows(data, dates, today, daily_goal_map, section_filter=None):
+    """Build HTML rows for configured funnels. Only shows funnels with ≥1 call.
+    section_filter=None renders ALL configured funnels in config order (merged
+    single-section view, 2026-08-14 — External/In-House split retired after all
+    funnels were brought in house). Passing a section string still filters."""
     daily = data["daily_data"]
     setter_data = data.get("setter_data", {})
     rows = ""
 
-    # Get configured funnels for this section
-    section_funnels = [fc for fc in FUNNEL_CONFIG if fc["section"] == section_filter]
+    # Get configured funnels for this section (or all, in config order)
+    section_funnels = [fc for fc in FUNNEL_CONFIG
+                       if section_filter is None or fc["section"] == section_filter]
 
     for fc in section_funnels:
         fname = fc["name"]
@@ -1683,7 +1690,11 @@ def build_funnel_rows(data, dates, today, daily_goal_map, section_filter):
 
 
 def build_uncategorized_rows(data, dates, today):
-    """Build rows for No Attribution, Unknown, and any unmapped funnels. Only shows rows with ≥1 call."""
+    """Build rows for No Attribution, unmapped funnels, and Unknown (Needs Review).
+    Only shows rows with ≥1 call. These append to the BOTTOM of the merged
+    Funnel Details table (the separate Uncategorized section header was retired
+    2026-08-14). "Unknown (Needs Review)" is pinned dead last with an amber
+    callout so mis-attributed leads stay visible without their own section."""
     daily = data["daily_data"]
     all_seen = data.get("all_funnels_seen", set())
 
@@ -1693,7 +1704,12 @@ def build_uncategorized_rows(data, dates, today):
         if f not in configured_names and f not in UNCATEGORIZED_FUNNELS:
             unmapped.add(f)
 
-    uncat_list = UNCATEGORIZED_FUNNELS + sorted(unmapped)
+    # Order: No Attribution → unmapped (alphabetical) → Unknown (Needs Review) LAST
+    uncat_list = (
+        [f for f in UNCATEGORIZED_FUNNELS if f != "Unknown (Needs Review)"]
+        + sorted(unmapped)
+        + ["Unknown (Needs Review)"]
+    )
 
     rows = ""
     for fname in uncat_list:
@@ -1710,7 +1726,13 @@ def build_uncategorized_rows(data, dates, today):
                 cells += f'<td class="num has-count{tc}">{count}</td>'
             else:
                 cells += f'<td class="num zero{tc}">0</td>'
-        rows += f'<tr><td class="label">{fname}</td>{cells}</tr>\n'
+        if fname == "Unknown (Needs Review)":
+            # Amber callout — needs-attention without reading as an error
+            rows += (f'<tr><td class="label" style="color:#b8860b;font-weight:600;" '
+                     f'title="Leads whose funnel value could not be mapped — review attribution in Close">'
+                     f'⚠ {fname}</td>{cells}</tr>\n')
+        else:
+            rows += f'<tr><td class="label" style="color:#888;">{fname}</td>{cells}</tr>\n'
 
     return rows
 
@@ -1792,9 +1814,10 @@ def generate_lane_content(data, dates, today, daily_goal_map, n_cols, lane_rep_n
             "target_class": target_class(target_pct) if target_pct is not None else "",
         }
 
-    # Funnel section rows (dynamic — only funnels with >=1 call)
-    ext_rows = build_funnel_rows(data, dates, today, daily_goal_map, "external")
-    inh_rows = build_funnel_rows(data, dates, today, daily_goal_map, "inhouse")
+    # Funnel rows (dynamic — only funnels with >=1 call). Single merged section
+    # (2026-08-14): all funnels brought in house, External/In-House split retired.
+    # Uncategorized rows append at the bottom; "Unknown (Needs Review)" pinned last.
+    fun_rows = build_funnel_rows(data, dates, today, daily_goal_map)  # all sections
     unc_rows = build_uncategorized_rows(data, dates, today)
 
     # Total row
@@ -1874,27 +1897,15 @@ def generate_lane_content(data, dates, today, daily_goal_map, n_cols, lane_rep_n
 
     rep_summary = "Rep Details — " + " · ".join(rep_summary_parts) if rep_summary_parts else "Rep Details — No calls"
 
-    # Build section HTML, only include sections with rows
-    # Section label sits IN the first cell of the date header row — visually aligned
-    # with the date columns, no longer a banner above the table.
+    # Single merged Funnel Details table — section label sits IN the first cell
+    # of the date header row, visually aligned with the date columns.
     funnel_html = ""
-    if inh_rows:
-        funnel_html += f"""
+    all_funnel_rows = fun_rows + unc_rows
+    if all_funnel_rows:
+        funnel_html = f"""
     <table><colgroup><col style="width:200px"><col span="{n_cols}"></colgroup>
-      <thead><tr><th class="sec-label">FUNNEL DETAILS — IN-HOUSE</th>{date_headers}</tr></thead>
-      <tbody>{inh_rows}</tbody>
-    </table>"""
-    if ext_rows:
-        funnel_html += f"""
-    <table><colgroup><col style="width:200px"><col span="{n_cols}"></colgroup>
-      <thead><tr><th class="sec-label">FUNNEL DETAILS — EXTERNAL</th>{date_headers}</tr></thead>
-      <tbody>{ext_rows}</tbody>
-    </table>"""
-    if unc_rows:
-        funnel_html += f"""
-    <table><colgroup><col style="width:200px"><col span="{n_cols}"></colgroup>
-      <thead><tr><th class="sec-label is-compact">FUNNEL DETAILS — UNCATEGORIZED</th>{date_headers}</tr></thead>
-      <tbody>{unc_rows}</tbody>
+      <thead><tr><th class="sec-label">FUNNEL DETAILS</th>{date_headers}</tr></thead>
+      <tbody>{all_funnel_rows}</tbody>
     </table>"""
 
     return f"""
