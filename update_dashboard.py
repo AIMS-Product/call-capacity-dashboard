@@ -258,13 +258,11 @@ LANE_1_REP_NAMES = {
     "user_wHm1vcLde4RExd3vv9UOjnms5Oz8ssXg8600mQuxMPb": "Christian Hartwell",
     "user_lUjlATIIgFg8mELa0GFzZUj0lG4Cs7PwQsxbi34I6Su": "Joe Dysert",
     "user_7HSxi55O8q5jO11khvrTcAGoL2nlcoa3kZ6loAY6i78": "Joseph Vaughan",
-    "user_XEbPgLixZy4dhuLp34WogOzCIChkKEnrffDnHlxOnA7": "Danny Santolaya",
     "user_1TKtkacQ7ZMKkcqnmCERikTYWwGltp5XUjEE9Hshple": "Shreya Bechra",
-    "user_vyiPzY0qxbLwnW5Ubwae8vY2MLviPuozSTIsEKcyrFE": "Zac Clover",
-    "user_3nrtuEmgPYd5VA15NvrxgQxDVNWbhrNSzitEKGwi8s6": "Ryan Jones",  # VendHub closer — confirmed keep 2026-08-12
     "user_6kp6k4OcqKqFNrxGjgMUncedjiCYC6JHU8EI28F7etV": "Luke Herman",
     # Chris Wanke removed from rep details (no longer with company) — user_id retained in LANE_1_REPS so historical calls still count
     # Jake Skinner (user_fYWHvOuCKDuaQxSp6lROlv2rmvZZYq1kzjGvaF7OrAL), Dubem Adindu (user_1xDZSeOa8omjfxHXD80twTf8OieXfQ6tNCaYbVygtv1), and Luis Galarza (user_Ap8we63okFA5Cw9pvr5xgccvqDlIfisKVtFKt6oBe6p) removed from rep details 2026-08-12 — no longer with company; user_ids retained in LANE_1_REPS so historical calls still count
+    # Danny Santolaya (user_XEbPgLixZy4dhuLp34WogOzCIChkKEnrffDnHlxOnA7), Ryan Jones (user_3nrtuEmgPYd5VA15NvrxgQxDVNWbhrNSzitEKGwi8s6, was VendHub closer), and Zac Clover (user_vyiPzY0qxbLwnW5Ubwae8vY2MLviPuozSTIsEKcyrFE) removed from rep details 2026-08-14 — no longer with company; user_ids retained in LANE_1_REPS so historical calls still count (and VendHub keeps counting Ryan-owned leads until reassigned)
 }
 LANE_1_LEAD = "user_wHm1vcLde4RExd3vv9UOjnms5Oz8ssXg8600mQuxMPb"  # Christian Hartwell
 
@@ -300,11 +298,11 @@ LANE_2_REPS = {
     "user_pKEujUcHJfsEyI5lM6L56aXM2s5nNOU994JRjRSlAdA",  # Chris Wanke → "LTF Quiz Calendar - General" (from 05/18)
 }
 LANE_2_REP_NAMES = {
-    "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj": "Jason Aaron",
     # Bryan Barcus and Steven Starnes removed from rep details (no longer with company) — user_ids retained in LANE_2_REPS so historical calls still count
     # "LTF Quiz Calendar - General" (user_pKEujUcHJfsEyI5lM6L56aXM2s5nNOU994JRjRSlAdA, Chris Wanke's repurposed calendar) removed from rep details 2026-06-18 — user_id retained in LANE_2_REPS so historical calls still count
     # John Kirk (user_5pAfnzGONQLUVLKqFQVpQ3570YV1gurVCTp1MMgfCDL), Elvis Ellis (user_I0cHZ04mBXXBvbFcnwmsc2KrcMsLsKxqjW8DtJ783Hr), and Cameron Caswell (user_UpJb11fzX2TuFHf7fFyWpfXr84lg2Ui7i7p5CtQkIaW) removed from rep details 2026-07-08 — no longer with company; user_ids retained in LANE_2_REPS + NEW_CALLS_ONLY_REPS (for Elvis / Cameron) so historical call counting & clamp behavior stay consistent
     # Lyle Hubbard (user_Bov31jjnHhENBy8uWNTTL8KKax8VX7o6DugLzBYOHBG) removed from rep details 2026-08-07 — no longer with company; user_id retained in LANE_2_REPS + NEW_CALLS_ONLY_REPS so historical call counting & clamp behavior stay consistent
+    # Jason Aaron (user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj) removed from rep details 2026-08-14 — no longer with company; user_id retained in LANE_2_REPS + NEW_CALLS_ONLY_REPS so historical call counting & clamp behavior stay consistent
     # Kelly Schrader (user_WquWudQN7dghZsAPiNY80eJUmg1EadQg2UCQdvgbif7) removed from rep details 2026-08-07 — STILL WITH COMPANY, moved to Lane 2 scraper rotation 2026-08-05; now tracked in SCRAPER_SETTERS (EOD Scraper Bookings). user_id retained in LANE_2_REPS + NEW_CALLS_ONLY_REPS so historical call counting & clamp behavior stay consistent
 }
 LANE_2_LEAD = "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj"  # Jason Aaron
@@ -318,7 +316,7 @@ LANE_2_LEAD = "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj"  # Jason Aaron
 # and ALL_LANE_REP_NAMES below for everything visible.
 ALL_LANE_REPS      = LANE_1_REPS | LANE_2_REPS
 ALL_LANE_REP_NAMES = {**LANE_2_REP_NAMES, **LANE_1_REP_NAMES}  # LANE_1 wins on Chris Wanke / LTF Quiz Calendar conflict
-ALL_LANE_LEAD      = LANE_1_LEAD  # Christian Hartwell continues as team lead badge
+ALL_LANE_LEAD      = None  # Lead badge retired 2026-08-14 — Christian Hartwell no longer team lead (no replacement tagged)
 
 # ── New-Calls-Only Reps (Lane 2 transition mode) ────────────────────────────
 # These reps' "Total Meetings" displays clamp to their "New Calls" count instead
@@ -332,7 +330,7 @@ NEW_CALLS_ONLY_REPS = {
     "user_I0cHZ04mBXXBvbFcnwmsc2KrcMsLsKxqjW8DtJ783Hr",  # Elvis Ellis (departed 2026-07-08; kept for historical clamp consistency)
     "user_WquWudQN7dghZsAPiNY80eJUmg1EadQg2UCQdvgbif7",  # Kelly Schrader (moved to scraper rotation 2026-08-05; kept — clamp still applies to any owned-lead calls)
     "user_UpJb11fzX2TuFHf7fFyWpfXr84lg2Ui7i7p5CtQkIaW",  # Cameron Caswell (departed 2026-07-08; kept for historical clamp consistency)
-    "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj",  # Jason Aaron (only actively displayed clamped rep as of 2026-08-07)
+    "user_MrBLkl5wCqTm7QxHxPo2ydNV5KxMllg6YZDVc12Aqzj",  # Jason Aaron (departed 2026-08-14; kept for historical clamp consistency)
     "user_Bov31jjnHhENBy8uWNTTL8KKax8VX7o6DugLzBYOHBG",  # Lyle Hubbard (departed 2026-08-07; kept for historical clamp consistency)
 }
 
