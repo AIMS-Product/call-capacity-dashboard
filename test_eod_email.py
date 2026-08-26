@@ -32,25 +32,14 @@ import update_dashboard as ud
 
 import re
 
-# TEST_EMAIL_TO may hold one address or several. Accept common separators
-# (comma, semicolon, newline, whitespace) so multi-recipient testing works
-# without accidentally jamming addresses into a single string with a newline
-# — SMTP rejects those with "folded header contains newline".
-_raw_test_to  = os.environ.get("TEST_EMAIL_TO", "")
-TEST_EMAIL_TO = [addr.strip() for addr in re.split(r"[,;\s]+", _raw_test_to) if addr.strip()]
-if not TEST_EMAIL_TO:
-    print("❌ TEST_EMAIL_TO env var is not set. Set it to your email and re-run.")
-    sys.exit(1)
 
-if not ud.CLOSE_API_KEY:
-    print("❌ CLOSE_API_KEY not set.")
-    sys.exit(1)
-if not ud.GMAIL_APP_PASSWORD:
-    print("❌ GMAIL_APP_PASSWORD not set.")
-    sys.exit(1)
-if not ud.EMAIL_FROM:
-    print("❌ EMAIL_FROM not set.")
-    sys.exit(1)
+def parse_test_recipients():
+    # TEST_EMAIL_TO may hold one address or several. Accept common separators
+    # (comma, semicolon, newline, whitespace) so multi-recipient testing works
+    # without accidentally jamming addresses into a single string with a newline
+    # — SMTP rejects those with "folded header contains newline".
+    raw_test_to = os.environ.get("TEST_EMAIL_TO", "")
+    return [addr.strip() for addr in re.split(r"[,;\s]+", raw_test_to) if addr.strip()]
 
 
 def build_minimal_rolling_data(today):
@@ -136,9 +125,23 @@ def build_minimal_rolling_data(today):
 
 
 def main():
+    test_email_to = parse_test_recipients()
+    if not test_email_to:
+        print("❌ TEST_EMAIL_TO env var is not set. Set it to your email and re-run.")
+        sys.exit(1)
+    if not ud.CLOSE_API_KEY:
+        print("❌ CLOSE_API_KEY not set.")
+        sys.exit(1)
+    if not ud.GMAIL_APP_PASSWORD:
+        print("❌ GMAIL_APP_PASSWORD not set.")
+        sys.exit(1)
+    if not ud.EMAIL_FROM:
+        print("❌ EMAIL_FROM not set.")
+        sys.exit(1)
+
     today = datetime.now(ud.PACIFIC).date()
     print(f"═══ EOD Email Preview — {today} ═══")
-    print(f"Recipients ({len(TEST_EMAIL_TO)}): {', '.join(TEST_EMAIL_TO)}")
+    print(f"Recipients ({len(test_email_to)}): {', '.join(test_email_to)}")
     print()
 
     rolling_data = build_minimal_rolling_data(today)
@@ -146,10 +149,10 @@ def main():
 
     # send_eod_email already accepts a recipients override — just pass ours.
     # It logs its own status. Any error is caught and logged (won't crash).
-    ud.send_eod_email(rolling_data, today, recipients=TEST_EMAIL_TO)
+    ud.send_eod_email(rolling_data, today, recipients=test_email_to)
 
     print()
-    print(f"═══ Preview sent — check inboxes at {', '.join(TEST_EMAIL_TO)} ═══")
+    print(f"═══ Preview sent — check inboxes at {', '.join(test_email_to)} ═══")
 
 
 if __name__ == "__main__":

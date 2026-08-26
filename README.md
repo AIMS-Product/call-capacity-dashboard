@@ -81,6 +81,18 @@ GitHub Pages serves index.html
 3. Click **"Run workflow"** → **"Run workflow"**
 4. Watch the run. Once it completes, `index.html` should be committed and your GitHub Pages URL should show the dashboard.
 
+### Local EOD Email Preview
+
+To preview the EOD email without sending it:
+
+```bash
+python -m pip install requests
+export CLOSE_API_KEY=...
+python preview_eod_email.py
+```
+
+This writes `eod_preview.html` and `eod_preview.txt` locally using the same formatter as the live EOD email. Add `--date YYYY-MM-DD` to preview a specific report date.
+
 ---
 
 ## Step 5 — Set Up cron-job.org for 15-Minute Updates

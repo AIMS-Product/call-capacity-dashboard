@@ -2824,6 +2824,34 @@ def is_next_steps_title(title):
     return bool(t) and (resolve_scraper_title(t) is not None
                         or t.startswith(NEXT_STEPS_TITLE_PREFIXES))
 
+
+# Rich title matcher used by the EOD "Closed Today From Lane 2" section.
+# Mirrors the sales repo's scraper title classifier, with William's second title
+# included so we can recover the actual set/call dates from the meeting activity.
+LANE2_SETUP_TITLE_MAP = [
+    (re.compile(r"vendingpren[eu]+rs?\s+-\s+next\s+steps\s+call", re.IGNORECASE), "Charlie Ingram", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+call\s+-\s+next\s+steps", re.IGNORECASE), "Jacob Hepner", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+next\s+steps\s+call", re.IGNORECASE), "Vince Bartolini", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+next\s+steps\s+session", re.IGNORECASE), "Pearl Sathekge", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+discovery\s+-\s+next\s+steps", re.IGNORECASE), "Kelly Schrader", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+-\s+next\s+steps(?!\s+call)", re.IGNORECASE), "Jacob Herbig", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+r\s+next\s+steps", re.IGNORECASE), "William Nowak", "next_steps_title"),
+    (re.compile(r"vending\s+discovery\s+call\s+-\s+next\s+steps", re.IGNORECASE), "August Young", "next_steps_title"),
+    (re.compile(r"vending\s+discovery\s+-\s+next\s+steps", re.IGNORECASE), "Spencer Reynolds", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+strategy\s*-?\s*next\s+steps", re.IGNORECASE), "Amy Mulch", "next_steps_title"),
+    (re.compile(r"vending\s+opportunity\s*-?\s*next\s+steps", re.IGNORECASE), "Cassie Caraballo", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+connect\s*-?\s*next\s+steps", re.IGNORECASE), "Jessica Zatkin", "next_steps_title"),
+    (re.compile(r"vending\s+success\s*-?\s*next\s+steps", re.IGNORECASE), "Abigail Garza", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+momentum\s*-?\s*next\s+steps", re.IGNORECASE), "Connor George", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+launch\s*-?\s*next\s+steps", re.IGNORECASE), "Dana Lesiuk", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+pathway\s*-?\s*next\s+steps", re.IGNORECASE), "Naria Torres", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+blueprint\s*-?\s*next\s+steps", re.IGNORECASE), "Melia King", "next_steps_title"),
+    (re.compile(r"\bvending\s+consult\s+call\b", re.IGNORECASE), "William Nowak", "william_consult_call"),
+]
+
+SCRAPER_SETTER_DISPLAY = {close_name: display_name for close_name, display_name, _goal in SCRAPER_SETTERS}
+CONFIGURED_SCRAPER_SETTERS = set(SCRAPER_SETTER_DISPLAY)
+
 # ── Short funnel labels for the email body ────────────────────────────────────
 
 FUNNEL_SHORT = {
@@ -3076,7 +3104,10 @@ def fetch_leads_for_email(lead_ids):
     """
     fields = ",".join([
         "id",
+        "display_name",
+        "name",
         "status_id",
+        FIELD_FIRST_SALES_CALL,
         f"custom.{CF_LEAD_OWNER_NAME}",
         f"custom.{CF_SHOW_UP}",
         f"custom.{CF_FUNNEL_DEAL}",
@@ -3092,6 +3123,157 @@ def fetch_leads_for_email(lead_ids):
             log(f"  ⚠ EOD email: Could not fetch lead {lid}: {e}")
             cache[lid] = None
     return cache
+
+
+def parse_close_datetime(raw):
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(PACIFIC)
+    except (ValueError, TypeError):
+        return None
+
+
+def fetch_lead_meetings_for_eod(lead_id):
+    """Fetch one lead's meeting activities for closed-won Lane 2 attribution."""
+    meetings = []
+    skip = 0
+    fields = "id,lead_id,user_id,title,starts_at,date_start,date_created,status"
+    try:
+        while True:
+            data = close_get("activity/meeting", {
+                "lead_id": lead_id,
+                "_fields": fields,
+                "_skip": skip,
+                "_limit": 100,
+            })
+            batch = data.get("data", [])
+            meetings.extend(batch)
+            if not data.get("has_more"):
+                break
+            skip += len(batch) or 100
+    except Exception as e:
+        log(f"  ⚠ EOD email: Could not fetch meetings for lead {lead_id}: {e}")
+    return meetings
+
+
+def match_lane2_setup_title(title):
+    for pattern, setter_name, rule_name in LANE2_SETUP_TITLE_MAP:
+        if pattern.search(title or ""):
+            return setter_name, rule_name
+    return None, None
+
+
+def is_active_meeting_for_lane2_attribution(meeting):
+    status = (meeting.get("status") or "").lower()
+    title = (meeting.get("title") or "").strip().lower()
+    return (
+        not status.startswith(("canceled", "cancelled", "declined"))
+        and not title.startswith("canceled")
+    )
+
+
+def choose_lane2_setup_meeting(meetings, report_date, setter_field="", funnel=""):
+    matches = []
+    for meeting in meetings:
+        if not is_active_meeting_for_lane2_attribution(meeting):
+            continue
+        setter_name, rule_name = match_lane2_setup_title(meeting.get("title") or "")
+        if not setter_name:
+            continue
+        if (
+            rule_name == "william_consult_call"
+            and funnel != "Reactivation Scrapers"
+            and setter_field != "William Nowak"
+        ):
+            continue
+        created_at = parse_close_datetime(meeting.get("date_created"))
+        starts_at = parse_close_datetime(meeting.get("starts_at") or meeting.get("date_start"))
+        if created_at and created_at.date() > report_date:
+            continue
+        matches.append({
+            "meeting": meeting,
+            "setter": setter_name,
+            "rule": rule_name,
+            "created_at": created_at,
+            "starts_at": starts_at,
+        })
+
+    if not matches:
+        return None
+    matches.sort(
+        key=lambda m: m["created_at"] or datetime.min.replace(tzinfo=PACIFIC),
+        reverse=True,
+    )
+    return matches[0]
+
+
+def build_lane2_closed_won_lines(won_opps, email_leads, user_map, today):
+    """Rows for deals closed today that were set by Lane 2."""
+    rows = []
+    for opp in won_opps:
+        lid = opp.get("lead_id")
+        if not lid:
+            continue
+        lead = email_leads.get(lid)
+        if not lead:
+            continue
+
+        raw_funnel = lead.get(f"custom.{CF_FUNNEL_DEAL}") or ""
+        funnel = CLOSE_VALUE_TO_FUNNEL.get(raw_funnel, raw_funnel) or "Unknown"
+        setter_field = (lead.get(f"custom.{CF_REACT_SETTER}") or "").strip()
+        meetings = fetch_lead_meetings_for_eod(lid)
+        match = choose_lane2_setup_meeting(
+            meetings,
+            today,
+            setter_field=setter_field,
+            funnel=funnel,
+        )
+
+        source = ""
+        setter = ""
+        set_date = None
+        call_date = None
+        if match:
+            setter = match["setter"]
+            source = "title"
+            set_date = match["created_at"].date() if match["created_at"] else None
+            call_date = match["starts_at"].date() if match["starts_at"] else None
+            if setter_field and setter_field != setter:
+                source = "title/field mismatch"
+        elif setter_field in CONFIGURED_SCRAPER_SETTERS:
+            setter = setter_field
+            source = "field fallback"
+            fscbd = lead.get(FIELD_FIRST_SALES_CALL)
+            try:
+                set_date = date.fromisoformat(fscbd) if fscbd else None
+                call_date = set_date
+            except (ValueError, TypeError):
+                set_date = None
+                call_date = None
+
+        if not setter:
+            continue
+
+        days_to_close = (today - set_date).days if set_date else None
+        revenue = (opp.get("value") or 0) / 100
+        lead_name = lead.get("display_name") or lead.get("name") or lid
+        closer = user_map.get(opp.get("user_id") or "") or opp.get("user_id") or "Unknown"
+        rows.append({
+            "setter": setter,
+            "setter_display": SCRAPER_SETTER_DISPLAY.get(setter, setter),
+            "lead_name": lead_name,
+            "closer": closer,
+            "set_date": set_date,
+            "call_date": call_date,
+            "close_date": today,
+            "days_to_close": days_to_close,
+            "revenue": revenue,
+            "source": source,
+        })
+
+    rows.sort(key=lambda r: (r["setter_display"].lower(), r["lead_name"].lower()))
+    return rows
 
 
 def build_eod_data(rolling_data, today):
@@ -3166,6 +3348,13 @@ def build_eod_data(rolling_data, today):
         uid  = o.get("user_id") or ""
         name = user_map.get(uid) or uid or "Unknown"
         closer_counts[name] = closer_counts.get(name, 0) + 1
+
+    lane2_closed_won_lines = build_lane2_closed_won_lines(
+        won_opps,
+        email_leads,
+        user_map,
+        today,
+    )
 
     # ── Closed Won Funnel / ICP ───────────────────────────────────────────────
     icp_lines = []
@@ -3488,6 +3677,7 @@ def build_eod_data(rolling_data, today):
         "rep_breakdown_today": rep_breakdown_today,  # [[name, new, fu_r, tot, is_clamped], ...]
         "scraper_lines":       scraper_lines,        # [{name, goal, booked, shown, rate}]
         "vendhub_lines":       vendhub_lines,        # [(owner_name, count), ...]
+        "lane2_closed_won_lines": lane2_closed_won_lines,
     }
 
 
@@ -3505,6 +3695,16 @@ def format_eod_email(data):
         rev_str = f"${rev / 1_000:.1f}k"
     else:
         rev_str = f"${rev:,.0f}"
+
+    def _money(amount):
+        if amount >= 1_000_000:
+            return f"${amount / 1_000_000:.2f}M"
+        if amount >= 1_000:
+            return f"${amount / 1_000:.1f}k"
+        return f"${amount:,.0f}"
+
+    def _short_date(d):
+        return d.strftime("%-m/%-d") if d else "—"
 
     # Closers: sorted alphabetically, "x2" suffix for multiples
     closer_parts = []
@@ -3569,6 +3769,31 @@ def format_eod_email(data):
     else:
         vendhub_lines_plain = "* None"
 
+    # Lane 2 closed-won plain — today's won deals attributed back to setup rep.
+    lane2_closed_won_lines = data.get("lane2_closed_won_lines", [])
+    lane2_closed_won_revenue = sum(r["revenue"] for r in lane2_closed_won_lines)
+    lane2_closed_won_share = (
+        len(lane2_closed_won_lines) / data["deals"] * 100
+        if data["deals"] else 0
+    )
+    if lane2_closed_won_lines:
+        lane2_plain_parts = [
+            f"{len(lane2_closed_won_lines)} of {data['deals']} deals · {_money(lane2_closed_won_revenue)} of {rev_str} · {lane2_closed_won_share:.0f}% of today's wins",
+            "",
+            f"  {'Setter':<12} {'Set -> Call -> Close':<24} {'Days to Close':>13} {'Revenue':>8}  {'Closer':<14} Lead",
+        ]
+        for r in lane2_closed_won_lines:
+            lane2_plain_parts.append(
+                f"  {r['setter_display']:<12} "
+                f"{_short_date(r['set_date']) + ' -> ' + _short_date(r['call_date']) + ' -> ' + _short_date(r['close_date']):<24} "
+                f"{str(r['days_to_close']) if r['days_to_close'] is not None else '—':>13} "
+                f"{_money(r['revenue']):>8}  "
+                f"{r['closer'][:14]:<14} {r['lead_name']}"
+            )
+        lane2_closed_won_plain = "\n".join(lane2_plain_parts)
+    else:
+        lane2_closed_won_plain = f"0 of {data['deals']} deals · $0 of {rev_str} · {lane2_closed_won_share:.0f}% of today's wins"
+
     subject = f"EOD Stats {date_str}"
 
     # ── Plain text ────────────────────────────────────────────────────────────
@@ -3583,6 +3808,7 @@ def format_eod_email(data):
         f"Today's calls by rep:\n{rep_breakdown_plain}\n\n"
         f"Scraper bookings:\n{scraper_lines_plain}\n\n"
         f"VendHub calls:\n{vendhub_lines_plain}\n\n"
+        f"Closed today from Lane 2:\n{lane2_closed_won_plain}\n\n"
         f"Closed won funnel / ICP:\n{icp_lines_plain}\n\n"
         f"Closed lost — reason / funnel:\n{lost_lines_plain}\n"
     )
@@ -3718,6 +3944,49 @@ def format_eod_email(data):
     else:
         vendhub_rows = '<tr><td style="padding:6px 0;color:#999;font-size:14px;">None</td></tr>'
 
+    # Lane 2 closed-won rows — compact for email width.
+    if lane2_closed_won_lines:
+        l2_summary = (
+            f'{len(lane2_closed_won_lines)} of {data["deals"]} deals'
+            f' <span style="color:#888;font-weight:500;">· {_money(lane2_closed_won_revenue)} of {rev_str} · {lane2_closed_won_share:.0f}% of today&apos;s wins</span>'
+        )
+        l2_header_style = (
+            'padding:6px 6px 4px;color:#888;font-size:11px;font-weight:700;'
+            'letter-spacing:0.02em;border-bottom:1px solid #e5e5e5;text-align:right;'
+        )
+        l2_rows_parts = [
+            f'<tr><td colspan="5" style="padding:0 0 8px;color:#333;font-size:13px;font-weight:700;">{l2_summary}</td></tr>',
+            '<tr>'
+            f'<td style="{l2_header_style}text-align:left;padding-left:0;width:78px;">Setter</td>'
+            f'<td style="{l2_header_style}text-align:left;width:auto;">Lead</td>'
+            f'<td style="{l2_header_style}width:120px;">Set → Call → Close</td>'
+            f'<td style="{l2_header_style}width:58px;">Days to Close</td>'
+            f'<td style="{l2_header_style}width:58px;padding-right:0;">Rev</td>'
+            '</tr>',
+        ]
+        for r in lane2_closed_won_lines:
+            source_note = (
+                f' <span style="color:#aaa;font-size:11px;">({r["source"]})</span>'
+                if r["source"] != "title" else ""
+            )
+            days_display = str(r["days_to_close"]) if r["days_to_close"] is not None else "—"
+            l2_rows_parts.append(
+                '<tr>'
+                f'<td style="padding:7px 6px 7px 0;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;font-weight:700;">{_esc(r["setter_display"])}</td>'
+                f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;">'
+                f'{_esc(r["lead_name"])}<br><span style="color:#999;font-size:11px;">closed by {_esc(r["closer"])}{source_note}</span></td>'
+                f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:12px;text-align:right;white-space:nowrap;">{_short_date(r["set_date"])} → {_short_date(r["call_date"])} → {_short_date(r["close_date"])}</td>'
+                f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;font-weight:700;text-align:right;">{days_display}</td>'
+                f'<td style="padding:7px 0;border-bottom:1px solid #f5f5f5;color:#1b7a2e;font-size:13px;font-weight:700;text-align:right;">{_money(r["revenue"])}</td>'
+                '</tr>'
+            )
+        lane2_closed_won_rows = "".join(l2_rows_parts)
+    else:
+        lane2_closed_won_rows = (
+            f'<tr><td style="padding:6px 0;color:#999;font-size:14px;">'
+            f'0 of {data["deals"]} deals · $0 of {rev_str} · {lane2_closed_won_share:.0f}% of today&apos;s wins</td></tr>'
+        )
+
     def stat_row(label, value, value_color="#1a1a1a"):
         return f"""
         <tr>
@@ -3783,6 +4052,17 @@ def format_eod_email(data):
           <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#1b5e1b;border-left:3px solid #1b5e1b;padding-left:8px;">VENDHUB CALLS</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             {vendhub_rows}
+          </table>
+        </td></tr>
+
+        <!-- Divider -->
+        <tr><td style="background:#ffffff;padding:0 28px;"><hr style="border:none;border-top:1px solid #ececec;margin:0;"></td></tr>
+
+        <!-- Closed Today From Lane 2 block -->
+        <tr><td style="background:#ffffff;padding:20px 28px;">
+          <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#1b5e1b;border-left:3px solid #1b5e1b;padding-left:8px;">CLOSED TODAY FROM LANE 2</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            {lane2_closed_won_rows}
           </table>
         </td></tr>
 

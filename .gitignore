@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+eod_preview*.html
+eod_preview*.txt
+lane2_closed_won_*.csv
