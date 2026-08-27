@@ -3106,6 +3106,7 @@ def fetch_leads_for_email(lead_ids):
         "id",
         "display_name",
         "name",
+        "date_created",
         "status_id",
         FIELD_FIRST_SALES_CALL,
         f"custom.{CF_LEAD_OWNER_NAME}",
@@ -3222,6 +3223,7 @@ def build_lane2_closed_won_lines(won_opps, email_leads, user_map, today):
         raw_funnel = lead.get(f"custom.{CF_FUNNEL_DEAL}") or ""
         funnel = CLOSE_VALUE_TO_FUNNEL.get(raw_funnel, raw_funnel) or "Unknown"
         setter_field = (lead.get(f"custom.{CF_REACT_SETTER}") or "").strip()
+        lead_created_at = parse_close_datetime(lead.get("date_created"))
         meetings = fetch_lead_meetings_for_eod(lid)
         match = choose_lane2_setup_meeting(
             meetings,
@@ -3255,7 +3257,8 @@ def build_lane2_closed_won_lines(won_opps, email_leads, user_map, today):
         if not setter:
             continue
 
-        days_to_close = (today - set_date).days if set_date else None
+        pipeline_start_date = lead_created_at.date() if lead_created_at else set_date
+        days_to_close = (today - pipeline_start_date).days if pipeline_start_date else None
         revenue = (opp.get("value") or 0) / 100
         lead_name = lead.get("display_name") or lead.get("name") or lid
         closer = user_map.get(opp.get("user_id") or "") or opp.get("user_id") or "Unknown"
@@ -3264,6 +3267,7 @@ def build_lane2_closed_won_lines(won_opps, email_leads, user_map, today):
             "setter_display": SCRAPER_SETTER_DISPLAY.get(setter, setter),
             "lead_name": lead_name,
             "closer": closer,
+            "lead_created_date": lead_created_at.date() if lead_created_at else None,
             "set_date": set_date,
             "call_date": call_date,
             "close_date": today,
@@ -3706,6 +3710,9 @@ def format_eod_email(data):
     def _short_date(d):
         return d.strftime("%-m/%-d") if d else "—"
 
+    def _pipeline_date(d):
+        return d.strftime("%-m/%-d/%Y") if d else "—"
+
     # Closers: sorted alphabetically, "x2" suffix for multiples
     closer_parts = []
     for name, count in sorted(data["closer_counts"].items()):
@@ -3780,15 +3787,21 @@ def format_eod_email(data):
         lane2_plain_parts = [
             f"{len(lane2_closed_won_lines)} of {data['deals']} deals · {_money(lane2_closed_won_revenue)} of {rev_str} · {lane2_closed_won_share:.0f}% of today's wins",
             "",
-            f"  {'Setter':<12} {'Set -> Call -> Close':<24} {'Days to Close':>13} {'Revenue':>8}  {'Closer':<14} Lead",
+            f"  {'Setter':<12} {'Entered Pipeline':<16} {'Set -> Call -> Close':<24} {'Pipeline Days':>13} {'Revenue':>8}  Lead",
         ]
         for r in lane2_closed_won_lines:
+            close_path = (
+                _short_date(r["set_date"]) + " -> " +
+                _short_date(r["call_date"]) + " -> " +
+                _short_date(r["close_date"])
+            )
+            lead_cell = f"{r['lead_name']} (closed by {r['closer']})"
             lane2_plain_parts.append(
                 f"  {r['setter_display']:<12} "
-                f"{_short_date(r['set_date']) + ' -> ' + _short_date(r['call_date']) + ' -> ' + _short_date(r['close_date']):<24} "
+                f"{_pipeline_date(r['lead_created_date']):<16} "
+                f"{close_path:<24} "
                 f"{str(r['days_to_close']) if r['days_to_close'] is not None else '—':>13} "
-                f"{_money(r['revenue']):>8}  "
-                f"{r['closer'][:14]:<14} {r['lead_name']}"
+                f"{_money(r['revenue']):>8}  {lead_cell}"
             )
         lane2_closed_won_plain = "\n".join(lane2_plain_parts)
     else:
@@ -3955,13 +3968,14 @@ def format_eod_email(data):
             'letter-spacing:0.02em;border-bottom:1px solid #e5e5e5;text-align:right;'
         )
         l2_rows_parts = [
-            f'<tr><td colspan="5" style="padding:0 0 8px;color:#333;font-size:13px;font-weight:700;">{l2_summary}</td></tr>',
+            f'<tr><td colspan="6" style="padding:0 0 8px;color:#333;font-size:13px;font-weight:700;">{l2_summary}</td></tr>',
             '<tr>'
-            f'<td style="{l2_header_style}text-align:left;padding-left:0;width:78px;">Setter</td>'
+            f'<td style="{l2_header_style}text-align:left;padding-left:0;width:66px;">Setter</td>'
             f'<td style="{l2_header_style}text-align:left;width:auto;">Lead</td>'
-            f'<td style="{l2_header_style}width:120px;">Set → Call → Close</td>'
-            f'<td style="{l2_header_style}width:58px;">Days to Close</td>'
-            f'<td style="{l2_header_style}width:58px;padding-right:0;">Rev</td>'
+            f'<td style="{l2_header_style}width:72px;">Entered Pipeline</td>'
+            f'<td style="{l2_header_style}width:116px;">Set → Call → Close</td>'
+            f'<td style="{l2_header_style}width:54px;">Pipeline Days</td>'
+            f'<td style="{l2_header_style}width:50px;padding-right:0;">Rev</td>'
             '</tr>',
         ]
         for r in lane2_closed_won_lines:
@@ -3975,7 +3989,8 @@ def format_eod_email(data):
                 f'<td style="padding:7px 6px 7px 0;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;font-weight:700;">{_esc(r["setter_display"])}</td>'
                 f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;">'
                 f'{_esc(r["lead_name"])}<br><span style="color:#999;font-size:11px;">closed by {_esc(r["closer"])}{source_note}</span></td>'
-                f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:12px;text-align:right;white-space:nowrap;">{_short_date(r["set_date"])} → {_short_date(r["call_date"])} → {_short_date(r["close_date"])}</td>'
+                f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:11px;text-align:right;white-space:nowrap;">{_pipeline_date(r["lead_created_date"])}</td>'
+                f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:11px;text-align:right;white-space:nowrap;">{_short_date(r["set_date"])} → {_short_date(r["call_date"])} → {_short_date(r["close_date"])}</td>'
                 f'<td style="padding:7px 6px;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;font-weight:700;text-align:right;">{days_display}</td>'
                 f'<td style="padding:7px 0;border-bottom:1px solid #f5f5f5;color:#1b7a2e;font-size:13px;font-weight:700;text-align:right;">{_money(r["revenue"])}</td>'
                 '</tr>'

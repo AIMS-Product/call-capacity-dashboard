@@ -84,6 +84,7 @@ def fetch_lead(lead_id):
         "id",
         "display_name",
         "name",
+        "date_created",
         ud.FIELD_FIRST_SALES_CALL,
         ud.FIELD_FUNNEL_NAME_DEAL,
         ud.FIELD_REACTIVATION_SETTER,
@@ -184,6 +185,7 @@ def build_rows(report_date):
         if not lead_id:
             continue
         lead = fetch_lead(lead_id)
+        lead_created_at = parse_dt(lead.get("date_created"))
         meetings = fetch_lead_meetings(lead_id)
         match, all_matches = choose_lane2_meeting(meetings, report_date)
 
@@ -198,8 +200,8 @@ def build_rows(report_date):
         starts_at = match["starts_at"] if match else None
         first_sales_date = lead.get(ud.FIELD_FIRST_SALES_CALL) or ""
         days_to_close = ""
-        if created_at:
-            days_to_close = (report_date - created_at.date()).days
+        if lead_created_at:
+            days_to_close = (report_date - lead_created_at.date()).days
         elif first_sales_date:
             try:
                 days_to_close = (report_date - date.fromisoformat(first_sales_date)).days
@@ -218,6 +220,7 @@ def build_rows(report_date):
             "source": "title" if match else ("field_fallback" if fallback_setter else ""),
             "confidence": confidence,
             "reason": reason,
+            "lead_created_date": lead_created_at.date().isoformat() if lead_created_at else "",
             "set_date": created_at.date().isoformat() if created_at else "",
             "call_date": starts_at.date().isoformat() if starts_at else "",
             "days_to_close": days_to_close,
@@ -239,15 +242,16 @@ def print_report(rows, report_date):
     print()
     if not rows:
         return
-    print(f"{'Setter':<12} {'Confidence':<10} {'Set':<10} {'Call':<10} {'Days':>4} {'Revenue':>8}  {'Closer':<18} Lead")
+    print(f"{'Setter':<12} {'Confidence':<10} {'Entered':<10} {'Set':<10} {'Call':<10} {'Days':>4} {'Revenue':>8}  {'Closer':<18} Lead")
     print("-" * 112)
     for r in rows:
         setter = r["setter_display"] or "-"
+        created = r["lead_created_date"] or "-"
         set_date = r["set_date"] or "-"
         call_date = r["call_date"] or "-"
         days = str(r["days_to_close"]) if r["days_to_close"] != "" else "-"
         print(
-            f"{setter:<12} {r['confidence']:<10} {set_date:<10} {call_date:<10} "
+            f"{setter:<12} {r['confidence']:<10} {created:<10} {set_date:<10} {call_date:<10} "
             f"{days:>4} {format_money(r['revenue']):>8}  {r['closer'][:18]:<18} {r['lead_name']}"
         )
         if r["reason"] or r["matched_title"]:
@@ -268,7 +272,7 @@ def write_csv(rows, output_path):
     fieldnames = [
         "lead_name", "lead_id", "closer", "revenue", "funnel", "setter",
         "setter_display", "setter_field", "source", "confidence", "reason",
-        "set_date", "call_date", "days_to_close", "first_sales_call_date",
+        "lead_created_date", "set_date", "call_date", "days_to_close", "first_sales_call_date",
         "matched_title", "match_rule", "all_lane2_title_matches",
     ]
     with path.open("w", newline="", encoding="utf-8") as f:
