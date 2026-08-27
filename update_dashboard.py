@@ -2743,20 +2743,60 @@ LOST_STATUS_LABEL  = "💔 Lost"
 # Jennifer Padilla + Juan Cajina removed 2026-08-07 (no longer with company) — their
 # historical bookings still render on past days' data, just not tracked going forward.
 SCRAPER_SETTERS = [
+    # Roster per SCRAPER_SETTER_SETUP doc 2026-08-26. Goals default 3/day.
     ("Vince Bartolini",   "Vince",      3),
     ("Jacob Hepner",      "Jacob Hep.", 3),
-    ("Jacob Herbig",      "Jacob Her.", 3),   # added 2026-08 per tech reference
-    ("Charlie Ingram",    "Charlie",    3),   # added 2026-08 per tech reference
-    ("Pearl Sathekge",    "Pearl",      3),   # added 2026-08 per tech reference
-    ("Kelly Schrader",    "Kelly",      3),   # moved to Lane 2 scraper rotation 2026-08-05
-    ("William Nowak",     "William",    3),   # confirmed include 2026-08-07 (listed as Setter in tech ref, still books)
+    ("Jacob Herbig",      "Jacob Her.", 3),
+    ("Charlie Ingram",    "Charlie",    3),
+    ("Pearl Sathekge",    "Pearl",      3),
+    ("Kelly Schrader",    "Kelly",      3),
+    ("William Nowak",     "William",    3),
+    ("August Young",      "August",     3),   # added 2026-08-26
+    ("Spencer Reynolds",  "Spencer",    3),   # added 2026-08-26
+    ("Amy Mulch",         "Amy",        3),   # added 2026-08-26
+    ("Cassie Caraballo",  "Cassie",     3),   # added 2026-08-26
+    ("Jessica Zatkin",    "Jessica",    3),   # added 2026-08-26
+    ("Abigail Garza",     "Abigail",    3),   # added 2026-08-26
+    ("Connor George",     "Connor",     3),   # added 2026-08-26 — Calendly link pending
+    ("Dana Lesiuk",       "Dana",       3),   # added 2026-08-26 — Calendly link pending
+    ("Naria Torres",      "Naria",      3),   # added 2026-08-26 — Calendly link pending
+    ("Melia King",        "Melia",      3),   # added 2026-08-26 — Calendly link pending
 ]
 
-# Calendly link titles that identify a scraper-booked Next Steps meeting.
-# Mirrors NEXT_STEPS_TITLE_PREFIXES in the Lane 2 dashboard's fetch_data.py —
-# keep the two lists in sync. All titles have prospect + closer appended
-# (e.g. "Vendingpreneur Next Steps with John and Scott Seymour").
-# If a new Calendly link starts producing meetings, add its prefix here AND there.
+# Per-setter meeting-title map — mirrors SCRAPER_TITLE_MAP in the automation's
+# update_field.py (per SCRAPER_SETTER_SETUP doc 2026-08-26: "The title is how the
+# automation knows who to attribute the meeting to"). Each setter's Calendly link
+# has a UNIQUE title; real meeting titles get the prospect/closer appended
+# ("... with John and Scott Seymour"), so matching is startswith, LONGEST KEY
+# FIRST (Charlie's "Vendingpreneurs - Next Steps Call" nests over Jacob Herbig's
+# "Vendingpreneurs - Next Steps"). Keep in sync with update_field.py.
+SCRAPER_TITLE_MAP = {
+    "Vendingpreneurs - Next Steps Call":        "Charlie Ingram",
+    "Vendingpreneurs Call - Next Steps":        "Jacob Hepner",
+    "Vendingpreneurs Next Steps Call":          "Vince Bartolini",
+    "Vendingpreneurs Next Steps Session":       "Pearl Sathekge",
+    "Vendingpreneurs Discovery - Next Steps":   "Kelly Schrader",
+    "Vendingpreneurs - Next Steps":             "Jacob Herbig",
+    "Vendingpreneur Next Steps":                "William Nowak",   # reactivations link
+    # "Vending Consult Call" (William's fresh-leads link) intentionally EXCLUDED
+    # per Stephen 2026-08-26 — fresh-lead consults are a different motion and
+    # don't count toward Scraper Bookings. Re-add the map entry to include them.
+    "Vending Discovery Call - Next Steps":      "August Young",
+    "Vending Discovery - Next Steps":           "Spencer Reynolds",
+    "Vendingpreneurs Strategy - Next Steps":    "Amy Mulch",
+    "Vending Opportunity - Next Steps":         "Cassie Caraballo",
+    "Vendingpreneurs Connect - Next Steps":     "Jessica Zatkin",
+    "Vending Success - Next Steps":             "Abigail Garza",
+    "Vendingpreneurs Momentum - Next Steps":    "Connor George",
+    "Vendingpreneurs Launch - Next Steps":      "Dana Lesiuk",
+    "Vendingpreneurs Pathway - Next Steps":     "Naria Torres",
+    "Vendingpreneurs Blueprint - Next Steps":   "Melia King",
+}
+_TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
+
+# Legacy generic prefixes — meetings booked on OLD shared Calendly links (before
+# the per-setter unique-title migration) still count; those attribute via the
+# lead's Reactivation - Setter Name field instead of the title.
 NEXT_STEPS_TITLE_PREFIXES = (
     "Vendingpreneurs Call - Next Steps",
     "Vendingpreneurs Next Steps Call",
@@ -2765,9 +2805,24 @@ NEXT_STEPS_TITLE_PREFIXES = (
 )
 
 
+def resolve_scraper_title(title):
+    """Return the setter close_name a meeting title attributes to, or None.
+    Longest-key-first startswith match against SCRAPER_TITLE_MAP."""
+    t = (title or "").strip()
+    if not t:
+        return None
+    for key in _TITLE_KEYS_LONGEST_FIRST:
+        if t.startswith(key):
+            return SCRAPER_TITLE_MAP[key]
+    return None
+
+
 def is_next_steps_title(title):
-    """True if a meeting title identifies a scraper-booked Next Steps meeting."""
-    return bool(title) and title.strip().startswith(NEXT_STEPS_TITLE_PREFIXES)
+    """True if a meeting title identifies a scraper-booked meeting — either a
+    per-setter unique title (SCRAPER_TITLE_MAP) or a legacy generic prefix."""
+    t = (title or "").strip()
+    return bool(t) and (resolve_scraper_title(t) is not None
+                        or t.startswith(NEXT_STEPS_TITLE_PREFIXES))
 
 # ── Short funnel labels for the email body ────────────────────────────────────
 
@@ -3258,20 +3313,36 @@ def build_eod_data(rolling_data, today):
                          for close_name, _, _ in SCRAPER_SETTERS}
     scraper_set_today = {close_name: 0 for close_name, _, _ in SCRAPER_SETTERS}
 
-    # Booked / Shown — per-meeting counting on today's Next Steps meetings.
+    def _attribute_meeting(m):
+        """Setter attribution per the automation's methodology (2026-08-26 doc):
+        the unique meeting TITLE identifies the setter (SCRAPER_TITLE_MAP).
+        Legacy meetings on old shared-title links fall back to the lead's
+        Reactivation - Setter Name field + Reactivation Scrapers funnel check."""
+        return resolve_scraper_title(m.get("title")) or _scraper_for_lead(m["lead_id"])
+
+    # Booked / Shown — per-meeting counting on today's scraper-booked meetings.
     for m in ns_meetings_today:
-        setter = _scraper_for_lead(m["lead_id"])
-        if not setter:
+        setter = _attribute_meeting(m)
+        if not setter or setter not in scraper_stats:
             continue
         scraper_stats[setter]["booked"] += 1
         lead = scraper_leads.get(m["lead_id"]) or {}
         if str(lead.get(f"custom.{CF_SHOW_UP}", "")).lower() == "yes":
             scraper_stats[setter]["shown"] += 1
 
-    # Set — per-lead counting on Next Steps meetings created today.
+    # Set — per-lead counting on scraper meetings created today (reschedule churn
+    # counts once). Attribution: first title-mapped meeting for the lead wins;
+    # lead-field fallback for legacy titles.
+    _set_meetings_by_lead = {}
+    for m in ns_set_today:
+        _set_meetings_by_lead.setdefault(m["lead_id"], []).append(m)
     for lid in ns_set_lids:
-        setter = _scraper_for_lead(lid)
-        if not setter:
+        setter = None
+        for m in _set_meetings_by_lead.get(lid, []):
+            setter = _attribute_meeting(m)
+            if setter:
+                break
+        if not setter or setter not in scraper_set_today:
             continue
         scraper_set_today[setter] += 1
 
