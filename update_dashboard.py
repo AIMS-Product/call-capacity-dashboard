@@ -2858,16 +2858,40 @@ _TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
 NEXT_STEPS_PHRASE = "next steps"
 
 
+def _norm_name(name):
+    """Normalize for roster matching: collapse whitespace, casefold."""
+    return " ".join((name or "").split()).casefold()
+
+
+# normalized name -> canonical SCRAPER_SETTERS close_name (built at import)
+_ROSTER_BY_NORM = {}
+
+
+def match_roster_setter(name):
+    """Map any spelling/casing/spacing of a setter name to the canonical
+    SCRAPER_SETTERS close_name, or None if not on the roster."""
+    global _ROSTER_BY_NORM
+    if not _ROSTER_BY_NORM:
+        _ROSTER_BY_NORM = {_norm_name(c): c for c, _, _ in SCRAPER_SETTERS}
+    return _ROSTER_BY_NORM.get(_norm_name(name))
+
+
 def setter_from_user_field(lead, user_map):
-    """Resolve the lead's Reactivation - Setter User field (user id) to a Close
-    user name. Returns None if unset or unresolvable. Handles Close returning
-    either a bare user-id string or a single-element list."""
+    """Resolve the lead's Reactivation - Setter User field to a name.
+    Handles every shape Close might return for a user-type custom field:
+    a bare user id ("user_…"), a single-element list, or the user's name as a
+    plain string. Returns the raw resolved name (NOT roster-matched) or None."""
     val = (lead or {}).get(FIELD_REACT_SETTER_USER)
     if isinstance(val, list):
         val = val[0] if val else None
     if not val:
         return None
-    return (user_map or {}).get(val)
+    val = str(val).strip()
+    if not val:
+        return None
+    if val.startswith("user_"):
+        return (user_map or {}).get(val)
+    return val  # field returned a display name directly
 
 
 def resolve_scraper_title(title):
@@ -3198,20 +3222,30 @@ def resolve_scraper_meetings(meetings, lead_index):
     setter_names = {c for c, _, _ in SCRAPER_SETTERS}
 
     records, unattributed = [], 0
+    src_counts = {"user_field": 0, "title_map": 0, "text_field": 0}
     for m in ns:
         lead = lead_index.get(m["lead_id"]) or cache.get(m["lead_id"]) or {}
         # Attribution priority (2026-09-01): Setter USER field (ground truth,
         # stamped per booking) → unique-title map → legacy text field + funnel.
-        setter = setter_from_user_field(lead, user_map)
-        if setter and setter not in setter_names:
-            log(f"  ⚠ Setter User field names '{setter}' (lead {m['lead_id']}) — not in SCRAPER_SETTERS roster; falling back")
-            setter = None
-        if not setter:
+        # Per-source logging so misattribution is diagnosable from the run log.
+        raw_user_val = lead.get(FIELD_REACT_SETTER_USER)
+        resolved     = setter_from_user_field(lead, user_map)
+        setter       = match_roster_setter(resolved) if resolved else None
+        if setter:
+            src_counts["user_field"] += 1
+        else:
+            if raw_user_val:
+                log(f"  ⚠ Setter User field unusable on lead {m['lead_id']}: raw={raw_user_val!r} "
+                    f"resolved={resolved!r} — not matched to roster; falling back to title")
             setter = resolve_scraper_title(m.get("title"))
+            if setter:
+                src_counts["title_map"] += 1
         if not setter:
-            fld = (lead.get(FIELD_REACTIVATION_SETTER) or "").strip()
+            fld = match_roster_setter(lead.get(FIELD_REACTIVATION_SETTER) or "")
             fun = map_funnel(lead.get(FIELD_FUNNEL_NAME_DEAL) or "")
-            setter = fld if (fld in setter_names and fun == "Reactivation Scrapers") else None
+            setter = fld if (fld and fun == "Reactivation Scrapers") else None
+            if setter:
+                src_counts["text_field"] += 1
         if not setter:
             unattributed += 1
             continue
@@ -3225,6 +3259,9 @@ def resolve_scraper_meetings(meetings, lead_index):
         })
     log(f"  🕸 Scraper meetings: {len(ns)} Next Steps in window → {len(records)} attributed "
         f"({unattributed} unattributed dropped; {len(need)} lead fetches)")
+    log(f"  🕸 Attribution sources: {src_counts['user_field']} via Setter User field · "
+        f"{src_counts['title_map']} via title map · {src_counts['text_field']} via text field"
+        + ("  ⚠ USER FIELD NEVER USED — check cf id / field population" if src_counts["user_field"] == 0 and records else ""))
     return records
 
 
@@ -3645,8 +3682,8 @@ def build_eod_data(rolling_data, today):
         Titles can lie when Calendly links get renamed/re-provisioned; the user
         field can't."""
         lead = scraper_leads.get(m["lead_id"]) or {}
-        setter = setter_from_user_field(lead, user_map)
-        if setter and setter in {c for c, _, _ in SCRAPER_SETTERS}:
+        setter = match_roster_setter(setter_from_user_field(lead, user_map) or "")
+        if setter:
             return setter
         return resolve_scraper_title(m.get("title")) or _scraper_for_lead(m["lead_id"])
 
