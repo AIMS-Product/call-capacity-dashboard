@@ -231,6 +231,12 @@ FIELD_FUNNEL_NAME_DEAL = "custom.cf_xqDQE8fkPsWa0RNEve7hcaxKblCe6489XeZGRDzyPdX"
 FIELD_FIRST_SALES_CALL = "custom.cf_LFdYEQ6bsgp49YjZzefypDmdVx8iwuakWDSLPLpVrBq"
 FIELD_LEAD_OWNER       = "custom.cf_gOfS9pFwext58oberEegLyix8hZzeHrxhCZOVh3P3rd"
 FIELD_REACTIVATION_SETTER = "custom.cf_vz6kNiu4ItFxRA8Y9HKlWIoQMq3TsdaQqKekQ2YuxVk"  # only meaningful on Reactivation Scrapers leads
+# Reactivation - Setter User: user-type field stamped per booking (added 2026-09-01).
+# GROUND TRUTH for scraper attribution — outranks title map + text field, because
+# Calendly links get renamed/re-provisioned (2026-09-01: William's + August's
+# meetings arrived titled with Naria's reserved title and misattributed).
+CF_REACT_SETTER_USER    = "cf_7W3UCpJWWaIQsniF1upSxGO7rMX1yDT5qppHXBGJIhO"
+FIELD_REACT_SETTER_USER = f"custom.{CF_REACT_SETTER_USER}"
 LEAD_FIELDS = ",".join(["id", "display_name", "name", "status_id", FIELD_FUNNEL_NAME_DEAL])
 
 # Lane 1 reps — Christian Hartwell is Lane 1 Lead
@@ -841,7 +847,7 @@ def fetch_field_leads(start_date, end_date):
         f'{FIELD_FIRST_SALES_CALL} >= "{start_date.isoformat()}" '
         f'and {FIELD_FIRST_SALES_CALL} < "{end_date.isoformat()}"'
     )
-    fields = ",".join(["id", "display_name", "status_id", FIELD_FIRST_SALES_CALL, FIELD_FUNNEL_NAME_DEAL, FIELD_LEAD_OWNER, FIELD_REACTIVATION_SETTER])
+    fields = ",".join(["id", "display_name", "status_id", FIELD_FIRST_SALES_CALL, FIELD_FUNNEL_NAME_DEAL, FIELD_LEAD_OWNER, FIELD_REACTIVATION_SETTER, FIELD_REACT_SETTER_USER])
     leads = []
     skip = 0
     log(f"📥 Fetching leads by First Sales Call Booked Date ({start_date} to {end_date})...")
@@ -2852,6 +2858,18 @@ _TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
 NEXT_STEPS_PHRASE = "next steps"
 
 
+def setter_from_user_field(lead, user_map):
+    """Resolve the lead's Reactivation - Setter User field (user id) to a Close
+    user name. Returns None if unset or unresolvable. Handles Close returning
+    either a bare user-id string or a single-element list."""
+    val = (lead or {}).get(FIELD_REACT_SETTER_USER)
+    if isinstance(val, list):
+        val = val[0] if val else None
+    if not val:
+        return None
+    return (user_map or {}).get(val)
+
+
 def resolve_scraper_title(title):
     """Return the setter close_name a meeting title attributes to via
     SCRAPER_TITLE_MAP, or None. Longest-key-first startswith match. This is
@@ -3167,8 +3185,9 @@ def resolve_scraper_meetings(meetings, lead_index):
     if not ns:
         return []
     need = [lid for lid in dict.fromkeys(m["lead_id"] for m in ns) if lid not in lead_index]
-    fields = ",".join(["id", "display_name", "status_id",
-                       FIELD_LEAD_OWNER, FIELD_FUNNEL_NAME_DEAL, FIELD_REACTIVATION_SETTER])
+    fields = ",".join(["id", "display_name", "status_id", FIELD_LEAD_OWNER,
+                       FIELD_FUNNEL_NAME_DEAL, FIELD_REACTIVATION_SETTER, FIELD_REACT_SETTER_USER])
+    user_map = fetch_close_users()  # for Setter User (user-id) → name resolution
     cache = {}
     for lid in need:
         try:
@@ -3181,7 +3200,14 @@ def resolve_scraper_meetings(meetings, lead_index):
     records, unattributed = [], 0
     for m in ns:
         lead = lead_index.get(m["lead_id"]) or cache.get(m["lead_id"]) or {}
-        setter = resolve_scraper_title(m.get("title"))
+        # Attribution priority (2026-09-01): Setter USER field (ground truth,
+        # stamped per booking) → unique-title map → legacy text field + funnel.
+        setter = setter_from_user_field(lead, user_map)
+        if setter and setter not in setter_names:
+            log(f"  ⚠ Setter User field names '{setter}' (lead {m['lead_id']}) — not in SCRAPER_SETTERS roster; falling back")
+            setter = None
+        if not setter:
+            setter = resolve_scraper_title(m.get("title"))
         if not setter:
             fld = (lead.get(FIELD_REACTIVATION_SETTER) or "").strip()
             fun = map_funnel(lead.get(FIELD_FUNNEL_NAME_DEAL) or "")
@@ -3583,6 +3609,7 @@ def build_eod_data(rolling_data, today):
     # Dedicated lead cache — every lead fetched fresh with exactly these fields.
     scraper_lead_fields = ",".join([
         "id",
+        FIELD_REACT_SETTER_USER,
         f"custom.{CF_REACT_SETTER}",
         f"custom.{CF_FUNNEL_DEAL}",
         f"custom.{CF_SHOW_UP}",
@@ -3612,10 +3639,15 @@ def build_eod_data(rolling_data, today):
     scraper_set_today = {close_name: 0 for close_name, _, _ in SCRAPER_SETTERS}
 
     def _attribute_meeting(m):
-        """Setter attribution per the automation's methodology (2026-08-26 doc):
-        the unique meeting TITLE identifies the setter (SCRAPER_TITLE_MAP).
-        Legacy meetings on old shared-title links fall back to the lead's
-        Reactivation - Setter Name field + Reactivation Scrapers funnel check."""
+        """Setter attribution priority (2026-09-01): the lead's Reactivation -
+        Setter USER field (ground truth, stamped per booking) → unique-title map
+        (SCRAPER_TITLE_MAP) → legacy text field + Reactivation Scrapers funnel.
+        Titles can lie when Calendly links get renamed/re-provisioned; the user
+        field can't."""
+        lead = scraper_leads.get(m["lead_id"]) or {}
+        setter = setter_from_user_field(lead, user_map)
+        if setter and setter in {c for c, _, _ in SCRAPER_SETTERS}:
+            return setter
         return resolve_scraper_title(m.get("title")) or _scraper_for_lead(m["lead_id"])
 
     # Booked / Shown — per-meeting counting on today's scraper-booked meetings.
