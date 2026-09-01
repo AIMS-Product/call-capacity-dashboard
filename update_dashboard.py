@@ -847,7 +847,7 @@ def fetch_field_leads(start_date, end_date):
         f'{FIELD_FIRST_SALES_CALL} >= "{start_date.isoformat()}" '
         f'and {FIELD_FIRST_SALES_CALL} < "{end_date.isoformat()}"'
     )
-    fields = ",".join(["id", "display_name", "status_id", FIELD_FIRST_SALES_CALL, FIELD_FUNNEL_NAME_DEAL, FIELD_LEAD_OWNER, FIELD_REACTIVATION_SETTER, FIELD_REACT_SETTER_USER])
+    fields = ",".join(["id", "display_name", "status_id", FIELD_FIRST_SALES_CALL, FIELD_FUNNEL_NAME_DEAL, FIELD_LEAD_OWNER, FIELD_REACTIVATION_SETTER] + get_setter_user_keys())
     leads = []
     skip = 0
     log(f"📥 Fetching leads by First Sales Call Booked Date ({start_date} to {end_date})...")
@@ -2863,6 +2863,60 @@ def _norm_name(name):
     return " ".join((name or "").split()).casefold()
 
 
+# ── Setter User field: runtime id resolution ─────────────────────────────────
+# The configured CF_REACT_SETTER_USER id produced ZERO reads in production
+# (2026-09-01 2:28 PM run), so we no longer trust a hardcoded id alone. On first
+# use we ask Close's schema (/custom_field/lead/) for the field whose NAME is
+# "Reactivation - Setter User" and use whatever id Close reports. The log states
+# what was found and whether it matches the configured id.
+_SETTER_USER_KEYS = None  # resolved list of "custom.cf_..." keys to try, best first
+
+
+def get_setter_user_keys():
+    global _SETTER_USER_KEYS
+    if _SETTER_USER_KEYS is not None:
+        return _SETTER_USER_KEYS
+    keys = []
+    target = _norm_name("Reactivation - Setter User")
+    try:
+        skip = 0
+        while True:
+            data = close_get("custom_field/lead", {"_limit": 100, "_skip": skip})
+            batch = data.get("data", [])
+            for f in batch:
+                if _norm_name(f.get("name")) == target and f.get("id"):
+                    fid = f["id"]
+                    keys.append(f"custom.{fid}")
+                    match = "MATCHES configured id" if fid == CF_REACT_SETTER_USER else                             f"≠ configured {CF_REACT_SETTER_USER} — USING SCHEMA ID"
+                    log(f"  🔎 Setter User field per Close schema: id={fid} ({match})")
+            if not data.get("has_more"):
+                break
+            skip += len(batch) or 100
+    except Exception as e:
+        log(f"  ⚠ Could not read Close custom-field schema: {e}")
+    if not keys:
+        log(f"  ⚠ No lead custom field named 'Reactivation - Setter User' found in schema — using configured id only")
+    if FIELD_REACT_SETTER_USER not in keys:
+        keys.append(FIELD_REACT_SETTER_USER)  # configured id as fallback
+    _SETTER_USER_KEYS = keys
+    return keys
+
+
+def read_setter_user_value(lead):
+    """Read the Setter User value off a lead dict regardless of response shape:
+    flat 'custom.cf_x' keys (any resolved id) or a nested lead['custom'] dict."""
+    if not lead:
+        return None
+    for key in get_setter_user_keys():
+        if key in lead and lead[key]:
+            return lead[key]
+        bare = key.split(".", 1)[1]
+        nested = lead.get("custom")
+        if isinstance(nested, dict) and nested.get(bare):
+            return nested[bare]
+    return None
+
+
 # normalized name -> canonical SCRAPER_SETTERS close_name (built at import)
 _ROSTER_BY_NORM = {}
 
@@ -2881,7 +2935,7 @@ def setter_from_user_field(lead, user_map):
     Handles every shape Close might return for a user-type custom field:
     a bare user id ("user_…"), a single-element list, or the user's name as a
     plain string. Returns the raw resolved name (NOT roster-matched) or None."""
-    val = (lead or {}).get(FIELD_REACT_SETTER_USER)
+    val = read_setter_user_value(lead)
     if isinstance(val, list):
         val = val[0] if val else None
     if not val:
@@ -3210,7 +3264,7 @@ def resolve_scraper_meetings(meetings, lead_index):
         return []
     need = [lid for lid in dict.fromkeys(m["lead_id"] for m in ns) if lid not in lead_index]
     fields = ",".join(["id", "display_name", "status_id", FIELD_LEAD_OWNER,
-                       FIELD_FUNNEL_NAME_DEAL, FIELD_REACTIVATION_SETTER, FIELD_REACT_SETTER_USER])
+                       FIELD_FUNNEL_NAME_DEAL, FIELD_REACTIVATION_SETTER] + get_setter_user_keys())
     user_map = fetch_close_users()  # for Setter User (user-id) → name resolution
     cache = {}
     for lid in need:
@@ -3646,11 +3700,10 @@ def build_eod_data(rolling_data, today):
     # Dedicated lead cache — every lead fetched fresh with exactly these fields.
     scraper_lead_fields = ",".join([
         "id",
-        FIELD_REACT_SETTER_USER,
         f"custom.{CF_REACT_SETTER}",
         f"custom.{CF_FUNNEL_DEAL}",
         f"custom.{CF_SHOW_UP}",
-    ])
+    ] + get_setter_user_keys())
     scraper_leads = {}
     for lid in dict.fromkeys([m["lead_id"] for m in ns_meetings_today] + ns_set_lids):
         try:
