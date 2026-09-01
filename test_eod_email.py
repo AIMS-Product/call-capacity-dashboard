@@ -79,6 +79,11 @@ def build_minimal_rolling_data(today):
             continue
         if fscbd not in (today, tomorrow):
             continue
+        # Reactivation Scrapers is counted per Next Steps MEETING (injected below),
+        # not per FSCBD — mirrors build_dashboard_data's Option A logic.
+        if ud.map_funnel(lead.get(ud.FIELD_FUNNEL_NAME_DEAL) or "") == "Reactivation Scrapers":
+            lead_to_funnel[lead["id"]] = lead.get(ud.FIELD_FUNNEL_NAME_DEAL) or ""
+            continue
         daily[fscbd]["booked"] += 1
         # Note: valid_meetings needs "lead_owner" for the by-rep new-call counter.
         valid_meetings.append({
@@ -89,6 +94,23 @@ def build_minimal_rolling_data(today):
         # For fetch_rep_total_meetings — same lookup dicts main() builds
         lead_to_funnel[lead["id"]]      = lead.get(ud.FIELD_FUNNEL_NAME_DEAL) or ""
         leads_with_fscbd.add((lead["id"], fscbd))
+
+    # Reactivation Scrapers per-meeting injection — same as production main().
+    print(f"📥 Fetching Next Steps meetings for the Reactivation Scrapers funnel…")
+    lead_index = {l.get("id"): l for l in field_leads if l.get("id")}
+    scraper_meetings = ud.resolve_scraper_meetings(
+        ud.fetch_meetings_in_window(today, tomorrow), lead_index
+    )
+    for sm in scraper_meetings:
+        if sm["date"] not in daily or sm.get("status_id") in ud.EXCLUDED_LEAD_STATUS_IDS:
+            continue
+        daily[sm["date"]]["booked"] += 1
+        valid_meetings.append({
+            "lead_id":    sm["lead_id"],
+            "date":       sm["date"],
+            "lead_owner": sm.get("lead_owner") or "",
+        })
+        leads_with_fscbd.add((sm["lead_id"], sm["date"]))  # F/U double-count guard
 
     print(f"   ✓ Today ({today}) booked: {daily[today]['booked']}")
     print(f"   ✓ Tomorrow ({tomorrow}) booked: {daily[tomorrow]['booked']}")
