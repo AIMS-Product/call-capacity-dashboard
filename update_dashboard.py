@@ -411,6 +411,9 @@ ARCHIVE_DIR = os.environ.get("ARCHIVE_DIR", "archive")
 # Each entry: {"date": "YYYY-MM-DD HH:MM PT", "notes": ["bullet 1", "bullet 2"]}
 
 CHANGELOG_ENTRIES = [
+    {"date": "2026-09-01 9:00 AM PT", "notes": [
+        "Reactivation Scrapers funnel now counts every Next Steps meeting booked onto a closer's calendar (by meeting date), instead of only a lead's first-ever sales call. This funnel re-scrapes older leads back onto the calendar, so first-call-only counting under-represented the team's output. Repeat bookings on the same lead now each count; the row rolls into New Meetings Booked and the goal %. Every other funnel is unchanged (first sales call booked date). Historical days recalculate on the next run.",
+    ]},
     {"date": "2026-08-14 9:00 AM PT", "notes": [
         "Funnel Details is now one merged section — the In-House / External split has been retired since all funnels were brought in house. Funnels render in one table under a single FUNNEL DETAILS header, with previously-uncategorized rows at the bottom. 'Unknown (Needs Review)' stays pinned last with an amber ⚠ callout — leads showing there need funnel attribution cleaned up in Close.",
     ]},
@@ -1288,8 +1291,12 @@ def build_day_detail(valid_meetings, booking_dates, lane_rep_names, meeting_titl
     return result
 
 
-def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_label="", rep_total_meetings=None, rep_meetings_by_category=None):
+def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_label="", rep_total_meetings=None, rep_meetings_by_category=None, scraper_meetings=None):
     """Build dashboard data from field-based lead query.
+    scraper_meetings: optional list from resolve_scraper_meetings(). When given, the
+        Reactivation Scrapers funnel is counted PER NEXT STEPS MEETING (by starts_at)
+        instead of by FSCBD — see the injection block after the lead loop. When None,
+        legacy FSCBD counting applies to every funnel.
     field_leads: list of lead dicts from fetch_field_leads (or similar).
     lane_reps: set of user IDs to filter by (if None, no lane filter applied).
     lane_label: label for logging (e.g., "Lane 1", "Lane 2").
@@ -1353,6 +1360,12 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
         raw_funnel = (lead.get(FIELD_FUNNEL_NAME_DEAL) or "")
         funnel = map_funnel(raw_funnel)
 
+        # Reactivation Scrapers is counted per Next Steps MEETING (injected below),
+        # not per lead FSCBD — skip its leads here so they aren't double-counted.
+        if scraper_meetings is not None and funnel == "Reactivation Scrapers":
+            continue
+
+
         # Funnel-restricted reps (e.g., overflow): skip if funnel/date doesn't match
         if not passes_funnel_restriction(lead_owner, funnel, field_date):
             lane_excluded += 1
@@ -1379,6 +1392,43 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
             "lead_id": lead.get("id", ""),
             "lead_owner": lead_owner,
         })
+
+    # ── Reactivation Scrapers: per-meeting injection (Option A, 2026-09-01) ──
+    # Each Next Steps meeting on a scraper-attributed lead counts as one booking
+    # on its starts_at day. The CEO/exec team expect the FULL re-scrape effort —
+    # older leads put back on closer calendars — which FSCBD-only counting hid.
+    # No lead-owner gate here: attribution is by SETTER, and these meetings sit on
+    # closer calendars regardless of who owns the lead record. The lead-status
+    # exclusions (Canceled by Lead / Outside US) still apply. rep_data (per-rep
+    # breakdown) only credits owners in this lane, since that view is owner-based.
+    scraper_injected = 0
+    for sm in (scraper_meetings or []):
+        d = sm["date"]
+        if d not in daily_data:
+            continue
+        if sm.get("status_id") in EXCLUDED_LEAD_STATUS_IDS:
+            status_excluded += 1
+            continue
+        funnel = "Reactivation Scrapers"
+        daily_data[d]["booked"] += 1
+        all_funnels_seen.add(funnel)
+        daily_data[d]["funnels"][funnel] = daily_data[d]["funnels"].get(funnel, 0) + 1
+        owner = sm.get("lead_owner") or ""
+        if lane_reps and owner in rep_data:
+            rep_data[owner][d][funnel] = rep_data[owner][d].get(funnel, 0) + 1
+        setter = sm["setter"]
+        setter_data.setdefault(setter, {dd: 0 for dd in dates})
+        setter_data[setter][d] = setter_data[setter].get(d, 0) + 1
+        valid_meetings.append({
+            "date":       d,
+            "title":      sm.get("display_name", ""),
+            "funnel":     funnel,
+            "lead_id":    sm["lead_id"],
+            "lead_owner": owner,
+        })
+        scraper_injected += 1
+    if scraper_meetings is not None:
+        log(f"   🕸 Reactivation Scrapers counted per Next Steps meeting: {scraper_injected} in window")
 
     if status_excluded > 0:
         log(f"   ⚠ Excluded {status_excluded} leads (status: Canceled/Outside US)")
@@ -2763,7 +2813,8 @@ SCRAPER_SETTERS = [
     ("Melia King",        "Melia",      3),   # added 2026-08-26 — Calendly link pending
 ]
 
-# Per-setter meeting-title map — mirrors SCRAPER_TITLE_MAP in the automation's
+# Per-setter meeting-title map (ATTRIBUTION only — detection is the "Next Steps"
+# substring rule below). Mirrors SCRAPER_TITLE_MAP in the automation's
 # update_field.py (per SCRAPER_SETTER_SETUP doc 2026-08-26: "The title is how the
 # automation knows who to attribute the meeting to"). Each setter's Calendly link
 # has a UNIQUE title; real meeting titles get the prospect/closer appended
@@ -2794,20 +2845,17 @@ SCRAPER_TITLE_MAP = {
 }
 _TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
 
-# Legacy generic prefixes — meetings booked on OLD shared Calendly links (before
-# the per-setter unique-title migration) still count; those attribute via the
-# lead's Reactivation - Setter Name field instead of the title.
-NEXT_STEPS_TITLE_PREFIXES = (
-    "Vendingpreneurs Call - Next Steps",
-    "Vendingpreneurs Next Steps Call",
-    "Vendingpreneurs - Next Steps",
-    "Vendingpreneur Next Steps",   # singular, no dash — older Calendly link still in use
-)
+# Detection rule (per Stephen 2026-09-01): ANY meeting whose title contains the
+# phrase "Next Steps" is a scraper-booked meeting. The SCRAPER_SETTER_SETUP doc
+# guarantees every setter link title carries that phrase; the specific titles in
+# the methodology doc were examples, not an allowlist. Case-insensitive substring.
+NEXT_STEPS_PHRASE = "next steps"
 
 
 def resolve_scraper_title(title):
-    """Return the setter close_name a meeting title attributes to, or None.
-    Longest-key-first startswith match against SCRAPER_TITLE_MAP."""
+    """Return the setter close_name a meeting title attributes to via
+    SCRAPER_TITLE_MAP, or None. Longest-key-first startswith match. This is
+    ATTRIBUTION only — detection is is_next_steps_title()."""
     t = (title or "").strip()
     if not t:
         return None
@@ -2818,11 +2866,12 @@ def resolve_scraper_title(title):
 
 
 def is_next_steps_title(title):
-    """True if a meeting title identifies a scraper-booked meeting — either a
-    per-setter unique title (SCRAPER_TITLE_MAP) or a legacy generic prefix."""
-    t = (title or "").strip()
-    return bool(t) and (resolve_scraper_title(t) is not None
-                        or t.startswith(NEXT_STEPS_TITLE_PREFIXES))
+    """True if a meeting title identifies a scraper-booked Next Steps meeting:
+    the title contains "Next Steps" (case-insensitive). Attribution is handled
+    separately — title map first, then the lead's Reactivation - Setter Name
+    field + Reactivation Scrapers funnel — so a closer's own "Next Steps"-titled
+    follow-up on a non-scraper lead is detected here but never credited."""
+    return NEXT_STEPS_PHRASE in (title or "").lower()
 
 
 # Rich title matcher used by the EOD "Closed Today From Lane 2" section.
@@ -3022,31 +3071,25 @@ def fetch_vendhub_flagged_leads_active_today(today):
     return []
 
 
-def fetch_meetings_starting_today(today):
-    """Fetch all meeting activities whose starts_at falls on today (PT day).
+def fetch_meetings_in_window(start_date, end_date):
+    """Fetch every non-canceled meeting activity whose starts_at falls on a PT
+    day within [start_date, end_date] (inclusive). Org-wide — NO user_id filter,
+    because Calendly-booked meetings often carry an integration/bot user_id
+    rather than the closer's.
 
-    Uses `date_start__gte/lt` as the API-side hint (the only meeting-date filter
-    Close's endpoint accepts — `starts_at__gte/lt` returns 400 Bad Request), BUT
-    the API doesn't strictly enforce it. `fetch_rep_total_meetings` sees this
-    too — it fetches many more raw meetings than the date window contains and
-    filters locally. So we MUST re-check starts_at locally per meeting.
+    Uses Close's `date_start__gte/lt` as the API-side hint (the only meeting-date
+    filter the endpoint accepts — `starts_at__gte/lt` returns 400), but the API
+    doesn't strictly enforce it, so every record is re-checked locally.
 
-    Returns [{meeting_id, lead_id, user_id, starts_at, date_created, title}, ...]
-    where starts_at is confirmed to fall on today PT. Deduped by MEETING id
-    (pagination guard) — NOT by lead_id, because the Scraper Bookings section
-    counts each Next Steps meeting record individually (a lead can legitimately
-    have a 2nd/3rd Next Steps meeting; Lane 2 dashboard methodology). VendHub
-    dedupes lead_ids on its side.
+    Returns [{meeting_id, lead_id, user_id, starts_at, meeting_date, date_created,
+    title}, ...] deduped by MEETING id (a lead may legitimately have several).
     """
-    day_start_pt = datetime(today.year, today.month, today.day, tzinfo=PACIFIC)
-    day_end_pt   = day_start_pt + timedelta(days=1)
-    start_iso    = day_start_pt.astimezone(timezone.utc).isoformat()
-    end_iso      = day_end_pt.astimezone(timezone.utc).isoformat()
+    win_start_pt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=PACIFIC)
+    win_end_pt   = datetime(end_date.year, end_date.month, end_date.day, tzinfo=PACIFIC) + timedelta(days=1)
+    start_iso    = win_start_pt.astimezone(timezone.utc).isoformat()
+    end_iso      = win_end_pt.astimezone(timezone.utc).isoformat()
 
-    results  = []
-    seen     = set()   # meeting activity ids
-    raw_seen = 0
-    skip     = 0
+    results, seen, raw_seen, skip = [], set(), 0, 0
     try:
         while True:
             data = close_get("activity/meeting", {
@@ -3062,7 +3105,6 @@ def fetch_meetings_starting_today(today):
                 mid = m.get("id") or f"{lid}|{m.get('starts_at')}"
                 if not lid or mid in seen:
                     continue
-                # Local starts_at filter — required because Close's API doesn't strictly enforce.
                 starts_at = m.get("starts_at") or m.get("date_start")
                 if not starts_at:
                     continue
@@ -3070,7 +3112,7 @@ def fetch_meetings_starting_today(today):
                     s_dt = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
                 except (ValueError, TypeError):
                     continue
-                if not (day_start_pt <= s_dt < day_end_pt):
+                if not (win_start_pt <= s_dt < win_end_pt):
                     continue
                 status = (m.get("status") or "").lower()
                 if status.startswith(("canceled", "declined")):
@@ -3081,20 +3123,83 @@ def fetch_meetings_starting_today(today):
                     "lead_id":      lid,
                     "user_id":      m.get("user_id"),
                     "starts_at":    starts_at,
+                    "meeting_date": s_dt.astimezone(PACIFIC).date(),
                     "date_created": m.get("date_created"),
                     "title":        m.get("title") or "",
                 })
             if not data.get("has_more"):
                 break
             skip += len(batch) or 100
-            if skip > 5000:  # safety valve for badly-filtered responses
-                log(f"  ⚠ fetch_meetings_starting_today: hit skip cap at {skip}; may miss meetings")
+            if skip > 30000:  # safety valve — Close's loose date filter can over-return
+                log(f"  ⚠ fetch_meetings_in_window: hit skip cap at {skip}; may miss meetings")
                 break
     except Exception as e:
-        log(f"  ⚠ EOD email: date_start meeting query failed: {e}")
+        log(f"  ⚠ fetch_meetings_in_window failed: {e}")
         return []
-    log(f"  🏢 fetch_meetings_starting_today: {len(results)} meetings today (from {raw_seen} raw)")
+    log(f"  📅 fetch_meetings_in_window {start_date}→{end_date}: {len(results)} meetings kept (from {raw_seen} raw)")
     return results
+
+
+def fetch_meetings_starting_today(today):
+    """Today-only wrapper around fetch_meetings_in_window (EOD email uses this)."""
+    return fetch_meetings_in_window(today, today)
+
+
+def resolve_scraper_meetings(meetings, lead_index):
+    """Turn raw meeting records into Reactivation Scrapers booking records.
+
+    Methodology (reactivation-scrapers-booked-meetings-methodology doc + Stephen
+    2026-09-01, Option A): for the Reactivation Scrapers funnel ONLY, a booking
+    is a MEETING whose title contains "Next Steps", bucketed by starts_at PT —
+    NOT the lead's First Sales Call Booked Date. Re-scraped older leads landing
+    back on a closer's calendar count every time; FSCBD-only counting hid that.
+
+    Attribution: SCRAPER_TITLE_MAP by unique title first; otherwise the lead's
+    Reactivation - Setter Name field + Reactivation Scrapers funnel. Meetings that
+    resolve to no setter (e.g., a closer's own "Next Steps" follow-up on a webinar
+    lead) are dropped.
+
+    lead_index: {lead_id: lead dict} for leads already fetched (field_leads).
+    Leads not in it are fetched with a small field set into a dedicated cache.
+    Returns list of {date, lead_id, setter, lead_owner, status_id, display_name}.
+    """
+    ns = [m for m in meetings if is_next_steps_title(m.get("title"))]
+    if not ns:
+        return []
+    need = [lid for lid in dict.fromkeys(m["lead_id"] for m in ns) if lid not in lead_index]
+    fields = ",".join(["id", "display_name", "status_id",
+                       FIELD_LEAD_OWNER, FIELD_FUNNEL_NAME_DEAL, FIELD_REACTIVATION_SETTER])
+    cache = {}
+    for lid in need:
+        try:
+            cache[lid] = close_get(f"lead/{lid}", {"_fields": fields})
+        except Exception as e:
+            log(f"  ⚠ resolve_scraper_meetings: could not fetch lead {lid}: {e}")
+            cache[lid] = None
+    setter_names = {c for c, _, _ in SCRAPER_SETTERS}
+
+    records, unattributed = [], 0
+    for m in ns:
+        lead = lead_index.get(m["lead_id"]) or cache.get(m["lead_id"]) or {}
+        setter = resolve_scraper_title(m.get("title"))
+        if not setter:
+            fld = (lead.get(FIELD_REACTIVATION_SETTER) or "").strip()
+            fun = map_funnel(lead.get(FIELD_FUNNEL_NAME_DEAL) or "")
+            setter = fld if (fld in setter_names and fun == "Reactivation Scrapers") else None
+        if not setter:
+            unattributed += 1
+            continue
+        records.append({
+            "date":         m["meeting_date"],
+            "lead_id":      m["lead_id"],
+            "setter":       setter,
+            "lead_owner":   (lead.get(FIELD_LEAD_OWNER) or "").strip(),
+            "status_id":    lead.get("status_id"),
+            "display_name": lead.get("display_name", ""),
+        })
+    log(f"  🕸 Scraper meetings: {len(ns)} Next Steps in window → {len(records)} attributed "
+        f"({unattributed} unattributed dropped; {len(need)} lead fetches)")
+    return records
 
 
 def fetch_leads_for_email(lead_ids):
@@ -4211,6 +4316,21 @@ def main():
             except (ValueError, TypeError):
                 pass
 
+    # ── Reactivation Scrapers: Next Steps meetings across the window (Option A) ──
+    # Org-wide meeting fetch → keep "Next Steps"-titled → attribute to a setter.
+    # These become the Reactivation Scrapers funnel's bookings (per meeting, by
+    # starts_at) in build_dashboard_data, replacing FSCBD counting for that funnel.
+    log("\n📥 Fetching Next Steps meetings for the Reactivation Scrapers funnel…")
+    lead_index = {l.get("id"): l for l in field_leads if l.get("id")}
+    scraper_meetings = resolve_scraper_meetings(
+        fetch_meetings_in_window(rolling_start, rolling_end), lead_index
+    )
+    # Treat each counted scraper meeting as "new" for the priority hierarchy so
+    # fetch_rep_total_meetings doesn't ALSO file it under F/U — keeps
+    # new + fu + resch == total on the hero card.
+    for sm in scraper_meetings:
+        leads_with_fscbd.add((sm["lead_id"], sm["date"]))
+
     # Fetch total meetings per rep (includes follow-ups, reschedules, Q&A, etc.)
     # Used for the "Total Calls" reconciliation row in rep details AND the hero card
     # F/U / Resch / Other breakdown (priority-classified: new > fu > resch > other).
@@ -4219,7 +4339,8 @@ def main():
     )
 
     log("\n── Team (single-team mode) ──")
-    team_data = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=ALL_LANE_REPS, lane_label="Team", rep_total_meetings=rep_total_meetings, rep_meetings_by_category=rep_meetings_by_category)
+    team_data = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=ALL_LANE_REPS, lane_label="Team", rep_total_meetings=rep_total_meetings, rep_meetings_by_category=rep_meetings_by_category, scraper_meetings=scraper_meetings)
+
 
     # ── Non-new meeting details (F/U / Resch / Other panel section) ─────────────
     # For each non-new meeting captured by fetch_rep_total_meetings, resolve the
@@ -4299,7 +4420,7 @@ def main():
     # and revert the two uses of lane1_booked further below (in the Calendly loop
     # and inside generate_lane_content) to the combined `booked` value.
     log("\n── Lane 1 booked (for Booking Window Missed metric) ──")
-    _lane1_data_for_missed = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=LANE_1_REPS, lane_label="Lane 1 (missed)")
+    _lane1_data_for_missed = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=LANE_1_REPS, lane_label="Lane 1 (missed)", scraper_meetings=scraper_meetings)
     lane1_booked_by_date = {d: _lane1_data_for_missed["daily_data"][d]["booked"] for d in rolling_dates}
     team_data["lane1_booked_by_date"] = lane1_booked_by_date
     # ────────────────────────────────────────────────────────────────────────────
@@ -4396,7 +4517,9 @@ def main():
         pm = today - timedelta(days=7); ps = today - timedelta(days=1)
         wd = [pm + timedelta(days=i) for i in range(7)]
         w_leads = fetch_field_leads(pm, ps + timedelta(days=1))
-        wdata = build_dashboard_data(w_leads, wd, lane_reps=ALL_LANE_REPS, lane_label="Team")
+        w_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pm, ps),
+                                             {l.get("id"): l for l in w_leads if l.get("id")})
+        wdata = build_dashboard_data(w_leads, wd, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=w_scraper)
         # Apply Calendly capacity from cache to archive
         for d in wd:
             if d in max_cache:
@@ -4414,7 +4537,9 @@ def main():
         pme = today - timedelta(days=1); pms = pme.replace(day=1)
         nd = (pme - pms).days + 1; md = [pms + timedelta(days=i) for i in range(nd)]
         m_leads = fetch_field_leads(pms, today)
-        mdata = build_dashboard_data(m_leads, md, lane_reps=ALL_LANE_REPS, lane_label="Team")
+        m_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pms, pme),
+                                             {l.get("id"): l for l in m_leads if l.get("id")})
+        mdata = build_dashboard_data(m_leads, md, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=m_scraper)
         # Apply Calendly capacity from cache to archive
         for d in md:
             if d in max_cache:
