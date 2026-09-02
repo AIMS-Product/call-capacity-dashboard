@@ -3312,10 +3312,14 @@ def resolve_scraper_meetings(meetings, lead_index):
     src_counts = {"user_field": 0, "title_map": 0, "text_field": 0}
     for m in ns:
         lead = lead_index.get(m["lead_id"]) or cache.get(m["lead_id"]) or {}
-        # Attribution priority (2026-09-01): Setter USER field (ground truth,
-        # stamped per booking) → unique-title map → legacy text field + funnel.
-        # Per-source logging so misattribution is diagnosable from the run log.
-        raw_user_val = lead.get(FIELD_REACT_SETTER_USER)
+        # Attribution priority (2026-09-02): Setter USER field (ground truth)
+        # → legacy TEXT field + funnel → title map LAST. The title map is the
+        # least trustworthy source — Calendly links get recycled with reserved
+        # titles (the "Naria shows 3" incident: leads with empty user field,
+        # correct text field, and a Pathway-recycled title). Every non-user-field
+        # attribution emits a full AUDIT line with a Close link so miscredits
+        # are traceable to the exact lead in one click.
+        raw_user_val = lead.get(FIELD_REACT_SETTER_USER) or read_setter_user_value(lead)
         resolved     = setter_from_user_field(lead, user_map)
         setter       = match_roster_setter(resolved) if resolved else None
         if setter:
@@ -3323,17 +3327,27 @@ def resolve_scraper_meetings(meetings, lead_index):
         else:
             if raw_user_val:
                 log(f"  ⚠ Setter User field unusable on lead {m['lead_id']}: raw={raw_user_val!r} "
-                    f"resolved={resolved!r} — not matched to roster; falling back to title")
-            setter = resolve_scraper_title(m.get("title"))
-            if setter:
-                src_counts["title_map"] += 1
-        if not setter:
-            fld = match_roster_setter(lead.get(FIELD_REACTIVATION_SETTER) or "")
+                    f"resolved={resolved!r} — not matched to roster; falling back")
+            txt = (lead.get(FIELD_REACTIVATION_SETTER) or "").strip()
             fun = map_funnel(lead.get(FIELD_FUNNEL_NAME_DEAL) or "")
-            setter = fld if (fld and fun == "Reactivation Scrapers") else None
+            setter = match_roster_setter(txt) if (txt and fun == "Reactivation Scrapers") else None
             if setter:
                 src_counts["text_field"] += 1
+                log(f"  🔍 AUDIT text-field attribution: {m['meeting_date']} → {setter} · "
+                    f"title='{(m.get('title') or '')[:48]}' · user-field={raw_user_val!r} · "
+                    f"lead '{lead.get('display_name', '?')}' https://app.close.com/lead/{m['lead_id']}/")
+            else:
+                setter = resolve_scraper_title(m.get("title"))
+                if setter:
+                    src_counts["title_map"] += 1
+                    log(f"  🔍 AUDIT TITLE-ONLY attribution: {m['meeting_date']} → {setter} · "
+                        f"title='{(m.get('title') or '')[:48]}' · user-field={raw_user_val!r} "
+                        f"text-field={txt!r} · lead '{lead.get('display_name', '?')}' "
+                        f"https://app.close.com/lead/{m['lead_id']}/  "
+                        f"← title is the ONLY evidence; backfill Setter User in Close to correct")
         if not setter:
+            log(f"  🔍 AUDIT unattributed: {m['meeting_date']} · title='{(m.get('title') or '')[:48]}' · "
+                f"lead '{lead.get('display_name', '?')}' https://app.close.com/lead/{m['lead_id']}/")
             unattributed += 1
             continue
         records.append({
@@ -3754,8 +3768,7 @@ def build_eod_data(rolling_data, today):
         funnel = (lead.get(f"custom.{CF_FUNNEL_DEAL}") or "").strip()
         if funnel != SCRAPER_FUNNEL:
             return None
-        setter = (lead.get(f"custom.{CF_REACT_SETTER}") or "").strip()
-        return setter if setter in {c for c, _, _ in SCRAPER_SETTERS} else None
+        return match_roster_setter((lead.get(f"custom.{CF_REACT_SETTER}") or "").strip())
 
     scraper_stats     = {close_name: {"booked": 0, "shown": 0}
                          for close_name, _, _ in SCRAPER_SETTERS}
@@ -3771,7 +3784,7 @@ def build_eod_data(rolling_data, today):
         setter = match_roster_setter(setter_from_user_field(lead, user_map) or "")
         if setter:
             return setter
-        return resolve_scraper_title(m.get("title")) or _scraper_for_lead(m["lead_id"])
+        return _scraper_for_lead(m["lead_id"]) or resolve_scraper_title(m.get("title"))
 
     # Booked / Shown — per-meeting counting on today's scraper-booked meetings.
     for m in ns_meetings_today:
