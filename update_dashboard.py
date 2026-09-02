@@ -2917,17 +2917,49 @@ def read_setter_user_value(lead):
     return None
 
 
+# Close user id → canonical SCRAPER_SETTERS close_name. PRIMARY attribution
+# path for the Setter User field — immune to Close profile names, which for the
+# scraper team are FIRST NAMES ONLY ("August", "Connor"…), discovered via the
+# 2026-09-02 production log. uids verified against that log + the Lane 2
+# technical reference §6. Amy/Abigail/Dana/Naria/Melia: uids unknown — their
+# unique first names resolve via match_roster_setter's first-name fallback.
+SCRAPER_USER_IDS = {
+    "user_dQi0iL0igjCKtEXPSsv8ALDZMAz9orJxL60O7Q921jy": "Vince Bartolini",
+    "user_IeWR2TlhpjqoXy3K6jX7u9C8c83iBnHXSIvFZpotF3z": "Jacob Hepner",
+    "user_p2y1gLbIgUb9xognGTvuXoRpzp4Ro8QkO20ltgF1CvJ": "Jacob Herbig",
+    "user_yZWJTiMjUBfJt8pUPQG6hS7QfKUxwt322aYEABSUrQb": "Charlie Ingram",
+    "user_0SuNg0OWd2reYMeyuDVqiVvjiGcRiFheKKOXXZpyaPZ": "Pearl Sathekge",
+    "user_WquWudQN7dghZsAPiNY80eJUmg1EadQg2UCQdvgbif7": "Kelly Schrader",
+    "user_ZNKG1S9eI71qxhSozBK4jskTVtJqXzfNCPWqmADRR9F": "William Nowak",
+    "user_wH5PGq1Wm84UW6KrKCt6YCioWocmlffYkbadH6rN43H": "August Young",
+    "user_4sfuKGMbv0LQZ4hpS8ipASv406kKTSNP5Xx79jOwSqM": "Spencer Reynolds",
+    "user_Hoijs8g8hxab7NN7tMVvC4dpzwHcxSgkIuHeBRphyUL": "Cassie Caraballo",
+    "user_WmBJj4uIsE9WRLKMn5Y1i8MinIDJG5GjOHPeX2sUJCp": "Jessica Zatkin",
+    "user_YlAbrpKa9iKWFt351Dk1BC4Cmr4SXHKDsSDMG4hnVHi": "Connor George",
+}
+
 # normalized name -> canonical SCRAPER_SETTERS close_name (built at import)
 _ROSTER_BY_NORM = {}
 
 
+_ROSTER_BY_FIRST = {}
+
+
 def match_roster_setter(name):
-    """Map any spelling/casing/spacing of a setter name to the canonical
-    SCRAPER_SETTERS close_name, or None if not on the roster."""
-    global _ROSTER_BY_NORM
+    """Map any spelling of a setter name to the canonical SCRAPER_SETTERS
+    close_name. Tries the full name first, then an UNAMBIGUOUS first name —
+    scraper Close profiles carry first names only ("August" → "August Young").
+    "Jacob" stays ambiguous (two Jacobs) and returns None → uid map / title
+    map handle those. Returns None if no unique match."""
+    global _ROSTER_BY_NORM, _ROSTER_BY_FIRST
     if not _ROSTER_BY_NORM:
         _ROSTER_BY_NORM = {_norm_name(c): c for c, _, _ in SCRAPER_SETTERS}
-    return _ROSTER_BY_NORM.get(_norm_name(name))
+        firsts = {}
+        for c, _, _ in SCRAPER_SETTERS:
+            firsts.setdefault(_norm_name(c.split()[0]), []).append(c)
+        _ROSTER_BY_FIRST = {fn: lst[0] for fn, lst in firsts.items() if len(lst) == 1}
+    n = _norm_name(name)
+    return _ROSTER_BY_NORM.get(n) or _ROSTER_BY_FIRST.get(n)
 
 
 def setter_from_user_field(lead, user_map):
@@ -2944,7 +2976,8 @@ def setter_from_user_field(lead, user_map):
     if not val:
         return None
     if val.startswith("user_"):
-        return (user_map or {}).get(val)
+        # Deterministic uid → roster mapping first; Close profile name second.
+        return SCRAPER_USER_IDS.get(val) or (user_map or {}).get(val)
     return val  # field returned a display name directly
 
 
