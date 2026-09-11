@@ -100,4 +100,55 @@ tr.section-label-row.sec-ltf td { color: #1b3a5e; background: #f0f4ff; border-to
 </tbody></table>
   </div>
   <div class="footer"><a href="../archive.html">← Back to Archive</a><a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a></div>
-</div></body></html>
+</div>
+<div class="csv-retrofit" style="max-width:1400px;margin:4px auto 28px;padding:0 16px;display:flex;justify-content:flex-end;">
+<style>
+  .csv-download-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    background:#fff; color:#555; border:1px solid #ddd; border-radius:6px;
+    padding:6px 12px; font-size:12px; font-family:inherit; cursor:pointer;
+    white-space:nowrap; flex-shrink:0;
+  }
+  .csv-download-btn:hover { border-color:#1b7a2e; color:#1b7a2e; }
+</style>
+<script>
+  function csvEscape(value) {
+    const s = String(value == null ? "" : value);
+    if (/["\n,]/.test(s)) { return '"' + s.replace(/"/g, '""') + '"'; }
+    return s;
+  }
+  function downloadDashboardCSV() {
+    const rows = [];
+    let currentFunnel = "";
+    document.querySelectorAll("table").forEach(table => {
+      const secTh = table.querySelector("thead th.sec-label");
+      const hasTotal = table.querySelector("tr.total-row");
+      if (!secTh && !hasTotal) return;  // skip non-funnel tables (rep details etc.)
+      if (secTh && rows.length === 0) {
+        rows.push(Array.from(table.querySelectorAll("thead th"))
+          .map(th => th.textContent.replace(/\s+/g, " ").trim()));
+      }
+      table.querySelectorAll("tbody tr").forEach(tr => {
+        const cells = Array.from(tr.children).map(td =>
+          td.textContent.replace(/[›▶▼]/g, "").replace(/\s+/g, " ").trim());
+        if (!cells.length) return;
+        if (tr.classList.contains("funnel-expandable")) {
+          currentFunnel = cells[0];
+        } else if (tr.classList.contains("setter-row")) {
+          cells[0] = currentFunnel + " — " + cells[0];  // e.g. "Reactivation Scrapers — Vince Bartolini"
+        }
+        rows.push(cells);
+      });
+    });
+    if (rows.length < 2) return;
+    const csv = rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "call-capacity-week-2026-06-29.csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+</script>
+<button type="button" class="csv-download-btn" onclick="downloadDashboardCSV()">⬇ Download CSV</button></div>
+</body></html>
