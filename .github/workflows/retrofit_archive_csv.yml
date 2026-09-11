@@ -1,0 +1,40 @@
+name: Retrofit Archive CSV Button
+
+# One-off: injects the "Download CSV" button into EXISTING archive snapshots.
+# Idempotent — re-running skips files that already have it. Commits the
+# modified archive files directly. No Close API access needed.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  retrofit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run retrofit
+        run: python retrofit_archive_csv.py
+
+      - name: Commit modified archives
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add archive/
+          if git diff --cached --quiet; then
+            echo "Nothing to commit — all archives already have the button."
+          else
+            git commit -m "Retrofit: Download CSV button on existing archive snapshots"
+            git push
+          fi
