@@ -2474,7 +2474,10 @@ def generate_rolling_html(team_data, team_detail=None):
 
   <div class="footer">
     <span>Source: First Sales Call Booked Date field · <a href="archive.html">📁 Archive</a></span>
-    <a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a>
+    <span style="display:inline-flex;align-items:center;gap:16px;">
+      {csv_export_snippet(f"call-capacity-{today.isoformat()}.csv")}
+      <a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a>
+    </span>
   </div>
 </div>
 
@@ -2504,6 +2507,71 @@ def generate_rolling_html(team_data, team_detail=None):
 {panel_js}
 </body></html>"""
 
+
+
+# ─── CSV Export (ported from AIMS-Product/rep-dashboard) ─────────────────────
+
+def csv_export_snippet(csv_filename, button_only=False):
+    """Style + script + button for a client-side Download CSV, matching the
+    rep-dashboard's implementation: DOM-scrape the rendered funnel table(s),
+    csvEscape each cell, Blob download. Exports every funnel row (including the
+    per-setter drilldown rows, prefixed with the funnel name) plus the TOTAL row.
+    Included on the live page, daily snapshots (same HTML), and weekly/monthly
+    summaries."""
+    button = ('<button type="button" class="csv-download-btn" '
+              'onclick="downloadDashboardCSV()">⬇ Download CSV</button>')
+    if button_only:
+        return button
+    return f"""
+<style>
+  .csv-download-btn {{
+    display:inline-flex; align-items:center; gap:6px;
+    background:#fff; color:#555; border:1px solid #ddd; border-radius:6px;
+    padding:6px 12px; font-size:12px; font-family:inherit; cursor:pointer;
+    white-space:nowrap; flex-shrink:0;
+  }}
+  .csv-download-btn:hover {{ border-color:#1b7a2e; color:#1b7a2e; }}
+</style>
+<script>
+  function csvEscape(value) {{
+    const s = String(value == null ? "" : value);
+    if (/["\\n,]/.test(s)) {{ return '"' + s.replace(/"/g, '""') + '"'; }}
+    return s;
+  }}
+  function downloadDashboardCSV() {{
+    const rows = [];
+    let currentFunnel = "";
+    document.querySelectorAll("table").forEach(table => {{
+      const secTh = table.querySelector("thead th.sec-label");
+      const hasTotal = table.querySelector("tr.total-row");
+      if (!secTh && !hasTotal) return;  // skip non-funnel tables (rep details etc.)
+      if (secTh && rows.length === 0) {{
+        rows.push(Array.from(table.querySelectorAll("thead th"))
+          .map(th => th.textContent.replace(/\\s+/g, " ").trim()));
+      }}
+      table.querySelectorAll("tbody tr").forEach(tr => {{
+        const cells = Array.from(tr.children).map(td =>
+          td.textContent.replace(/[›▶▼]/g, "").replace(/\\s+/g, " ").trim());
+        if (!cells.length) return;
+        if (tr.classList.contains("funnel-expandable")) {{
+          currentFunnel = cells[0];
+        }} else if (tr.classList.contains("setter-row")) {{
+          cells[0] = currentFunnel + " — " + cells[0];  // e.g. "Reactivation Scrapers — Vince Bartolini"
+        }}
+        rows.push(cells);
+      }});
+    }});
+    if (rows.length < 2) return;
+    const csv = rows.map(r => r.map(csvEscape).join(",")).join("\\r\\n");
+    const blob = new Blob([csv], {{ type: "text/csv;charset=utf-8;" }});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "{csv_filename}";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }}
+</script>
+{button}"""
 
 
 # ─── Weekly Summary HTML ─────────────────────────────────────────────────────
@@ -2564,7 +2632,7 @@ def generate_weekly_html(data, week_start):
   <div class="card"><div class="sec">FUNNEL TOTALS</div>
     <table style="table-layout:auto; max-width:400px;"><thead><tr><th>Funnel</th><th>Total</th></tr></thead><tbody>{funnel_rows}</tbody></table>
   </div>
-  <div class="footer"><a href="../archive.html">← Back to Archive</a><a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a></div>
+  <div class="footer"><a href="../archive.html">← Back to Archive</a><span style="display:inline-flex;align-items:center;gap:16px;">{csv_export_snippet(f"call-capacity-week-{week_start.isoformat()}.csv")}<a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a></span></div>
 </div></body></html>"""
 
 
@@ -2629,7 +2697,7 @@ def generate_monthly_html(data, month_date):
   <div class="card"><div class="sec">FUNNEL TOTALS</div>
     <table style="table-layout:auto; max-width:400px;"><thead><tr><th>Funnel</th><th>Total</th></tr></thead><tbody>{funnel_rows}</tbody></table>
   </div>
-  <div class="footer"><a href="../archive.html">← Back to Archive</a><a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a></div>
+  <div class="footer"><a href="../archive.html">← Back to Archive</a><span style="display:inline-flex;align-items:center;gap:16px;">{csv_export_snippet(f"call-capacity-month-{month_date.strftime('%Y-%m')}.csv")}<a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a></span></div>
 </div></body></html>"""
 
 
