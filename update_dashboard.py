@@ -706,19 +706,42 @@ session.headers.update({"Content-Type": "application/json"})
 _api_call_count = 0
 
 def close_get(endpoint, params=None):
+    """GET with resilience (2026-09-15): retries 429 (Retry-After), 5xx, and
+    transient network errors (ReadTimeout/ConnectionError) with exponential
+    backoff. One flaky page out of 200+ used to abort whole window fetches —
+    which made the Reactivation Scrapers funnel vanish from the dashboard."""
     global _api_call_count
     time.sleep(API_THROTTLE)
     url = f"{CLOSE_API_BASE}/{endpoint}"
+    last_exc = None
     for attempt in range(5):
-        resp = session.get(url, params=params or {}, timeout=60)
+        try:
+            resp = session.get(url, params=params or {}, timeout=60)
+        except requests.exceptions.RequestException as e:
+            last_exc = e
+            if attempt == 4:
+                raise
+            wait = 2 ** attempt
+            log(f"   ⏳ Network error (attempt {attempt+1}): {type(e).__name__} — retrying in {wait}s...")
+            time.sleep(wait)
+            continue
         _api_call_count += 1
         if resp.status_code == 429:
             wait = float(resp.headers.get("Retry-After", 5))
             log(f"   ⏳ Rate limited (attempt {attempt+1}), waiting {wait}s...")
             time.sleep(wait)
             continue
+        if resp.status_code >= 500:
+            if attempt == 4:
+                resp.raise_for_status()
+            wait = 2 ** attempt
+            log(f"   ⏳ Close {resp.status_code} (attempt {attempt+1}) — retrying in {wait}s...")
+            time.sleep(wait)
+            continue
         resp.raise_for_status()
         return resp.json()
+    if last_exc:
+        raise last_exc
     resp.raise_for_status()
 
 def parse_meeting_date_pacific(meeting):
@@ -3331,8 +3354,11 @@ def fetch_meetings_in_window(start_date, end_date):
                 log(f"  ⚠ fetch_meetings_in_window: hit skip cap at {skip}; may miss meetings")
                 break
     except Exception as e:
-        log(f"  ⚠ fetch_meetings_in_window failed: {e}")
-        return []
+        # Keep whatever was already collected — partial data beats an empty
+        # window (an empty list makes the Reactivation Scrapers funnel vanish).
+        log(f"  🚨 fetch_meetings_in_window aborted mid-pagination after {raw_seen} raw / "
+            f"{len(results)} kept: {e} — RETURNING PARTIAL RESULTS")
+        return results
     log(f"  📅 fetch_meetings_in_window {start_date}→{end_date}: {len(results)} meetings kept (from {raw_seen} raw)")
     return results
 
@@ -4560,7 +4586,11 @@ def main():
     lead_index = {l.get("id"): l for l in field_leads if l.get("id")}
     scraper_meetings = resolve_scraper_meetings(
         fetch_meetings_in_window(rolling_start, rolling_end), lead_index
-    )
+    ) or None  # [] ⇒ fetch failure: None reverts this run to legacy FSCBD counting
+    if scraper_meetings is None:
+        log("  🚨 Scraper meeting fetch produced NOTHING — falling back to legacy FSCBD "
+            "counting for Reactivation Scrapers THIS RUN (row stays visible; per-meeting "
+            "counts resume on the next successful run)")
     # Treat each counted scraper meeting as "new" for the priority hierarchy so
     # fetch_rep_total_meetings doesn't ALSO file it under F/U — keeps
     # new + fu + resch == total on the hero card.
@@ -4754,7 +4784,7 @@ def main():
         wd = [pm + timedelta(days=i) for i in range(7)]
         w_leads = fetch_field_leads(pm, ps + timedelta(days=1))
         w_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pm, ps),
-                                             {l.get("id"): l for l in w_leads if l.get("id")})
+                                             {l.get("id"): l for l in w_leads if l.get("id")}) or None
         wdata = build_dashboard_data(w_leads, wd, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=w_scraper)
         # Apply Calendly capacity from cache to archive
         for d in wd:
@@ -4774,7 +4804,7 @@ def main():
         nd = (pme - pms).days + 1; md = [pms + timedelta(days=i) for i in range(nd)]
         m_leads = fetch_field_leads(pms, today)
         m_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pms, pme),
-                                             {l.get("id"): l for l in m_leads if l.get("id")})
+                                             {l.get("id"): l for l in m_leads if l.get("id")}) or None
         mdata = build_dashboard_data(m_leads, md, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=m_scraper)
         # Apply Calendly capacity from cache to archive
         for d in md:
