@@ -3291,6 +3291,41 @@ def fetch_vendhub_flagged_leads_active_today(today):
     return []
 
 
+# Last-known-good scraper meetings (per Stephen 2026-09-15): when the org-wide
+# meeting fetch fails or comes back incomplete, REUSE the previous successful
+# run's records so the Reactivation Scrapers numbers hold steady instead of
+# jumping methodologies or vanishing. Committed with the repo like
+# capacity_cache.json — the workflow's `git add` line must include it.
+SCRAPER_CACHE_FILE = "scraper_meetings_cache.json"
+_WINDOW_FETCH_COMPLETE = False
+
+
+def save_scraper_cache(records):
+    try:
+        payload = {
+            "saved_at": datetime.now(PACIFIC).isoformat(),
+            "records": [dict(r, date=r["date"].isoformat()) for r in records],
+        }
+        with open(SCRAPER_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+    except Exception as e:
+        log(f"  ⚠ Could not save scraper cache: {e}")
+
+
+def load_scraper_cache():
+    """Returns (records, saved_at_str) or ([], None). Dates parsed back to date objects."""
+    try:
+        with open(SCRAPER_CACHE_FILE, encoding="utf-8") as f:
+            payload = json.load(f)
+        records = [dict(r, date=date.fromisoformat(r["date"])) for r in payload.get("records", [])]
+        return records, payload.get("saved_at")
+    except FileNotFoundError:
+        return [], None
+    except Exception as e:
+        log(f"  ⚠ Could not load scraper cache: {e}")
+        return [], None
+
+
 def fetch_meetings_in_window(start_date, end_date):
     """Fetch every non-canceled meeting activity whose starts_at falls on a PT
     day within [start_date, end_date] (inclusive). Org-wide — NO user_id filter,
@@ -3309,6 +3344,8 @@ def fetch_meetings_in_window(start_date, end_date):
     start_iso    = win_start_pt.astimezone(timezone.utc).isoformat()
     end_iso      = win_end_pt.astimezone(timezone.utc).isoformat()
 
+    global _WINDOW_FETCH_COMPLETE
+    _WINDOW_FETCH_COMPLETE = False
     results, seen, raw_seen, skip = [], set(), 0, 0
     try:
         while True:
@@ -3352,13 +3389,15 @@ def fetch_meetings_in_window(start_date, end_date):
             skip += len(batch) or 100
             if skip > 30000:  # safety valve — Close's loose date filter can over-return
                 log(f"  ⚠ fetch_meetings_in_window: hit skip cap at {skip}; may miss meetings")
-                break
+                _WINDOW_FETCH_COMPLETE = False
+                return results  # truncated ⇒ treated as incomplete by the cache logic
     except Exception as e:
         # Keep whatever was already collected — partial data beats an empty
         # window (an empty list makes the Reactivation Scrapers funnel vanish).
         log(f"  🚨 fetch_meetings_in_window aborted mid-pagination after {raw_seen} raw / "
             f"{len(results)} kept: {e} — RETURNING PARTIAL RESULTS")
         return results
+    _WINDOW_FETCH_COMPLETE = True
     log(f"  📅 fetch_meetings_in_window {start_date}→{end_date}: {len(results)} meetings kept (from {raw_seen} raw)")
     return results
 
@@ -4586,11 +4625,22 @@ def main():
     lead_index = {l.get("id"): l for l in field_leads if l.get("id")}
     scraper_meetings = resolve_scraper_meetings(
         fetch_meetings_in_window(rolling_start, rolling_end), lead_index
-    ) or None  # [] ⇒ fetch failure: None reverts this run to legacy FSCBD counting
-    if scraper_meetings is None:
-        log("  🚨 Scraper meeting fetch produced NOTHING — falling back to legacy FSCBD "
-            "counting for Reactivation Scrapers THIS RUN (row stays visible; per-meeting "
-            "counts resume on the next successful run)")
+    )
+    if scraper_meetings and _WINDOW_FETCH_COMPLETE:
+        save_scraper_cache(scraper_meetings)  # this run becomes the last-known-good
+    else:
+        cached, saved_at = load_scraper_cache()
+        if cached:
+            log(f"  🚨 Scraper meeting fetch {'EMPTY' if not scraper_meetings else 'INCOMPLETE'} — "
+                f"REUSING previous run's {len(cached)} records (saved {saved_at}). "
+                f"Numbers hold steady; fresh counts resume on the next successful run.")
+            scraper_meetings = cached
+        elif scraper_meetings:
+            log("  🚨 Scraper meeting fetch INCOMPLETE and no cache available — using partial "
+                "results this run (counts may dip until the next successful run)")
+        else:
+            log("  🚨 Scraper meeting fetch EMPTY and no cache available — Reactivation "
+                "Scrapers row will be missing this run (visible signal that something is wrong)")
     # Treat each counted scraper meeting as "new" for the priority hierarchy so
     # fetch_rep_total_meetings doesn't ALSO file it under F/U — keeps
     # new + fu + resch == total on the hero card.
@@ -4784,7 +4834,7 @@ def main():
         wd = [pm + timedelta(days=i) for i in range(7)]
         w_leads = fetch_field_leads(pm, ps + timedelta(days=1))
         w_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pm, ps),
-                                             {l.get("id"): l for l in w_leads if l.get("id")}) or None
+                                             {l.get("id"): l for l in w_leads if l.get("id")})
         wdata = build_dashboard_data(w_leads, wd, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=w_scraper)
         # Apply Calendly capacity from cache to archive
         for d in wd:
@@ -4804,7 +4854,7 @@ def main():
         nd = (pme - pms).days + 1; md = [pms + timedelta(days=i) for i in range(nd)]
         m_leads = fetch_field_leads(pms, today)
         m_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pms, pme),
-                                             {l.get("id"): l for l in m_leads if l.get("id")}) or None
+                                             {l.get("id"): l for l in m_leads if l.get("id")})
         mdata = build_dashboard_data(m_leads, md, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=m_scraper)
         # Apply Calendly capacity from cache to archive
         for d in md:
