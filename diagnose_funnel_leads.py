@@ -60,6 +60,8 @@ EXCLUDED_LEAD_STATUS_IDS = {
 
 # Lane reps — leads must have an owner in this set to be counted.
 LANE_1_REPS = {
+    "user_rJngzi4LOFXzpNb0bLi1ZtKRlRkga2fYuf4QrYpAmIc",  # Oscar Pugh (added 2026-09-17)
+    "user_BaN2TstWtyF34eaQSSLG11j6DhKKm67Y6JltbIYCafO",  # Ariella Irvine (added 2026-09-17)
     "user_7F059xEinVentOEvkRMP77fWZyvwUiTRTUOuhD11J0e",  # Robin Perkins
     "user_wF5aATmDljO6g6AHqehRPVmfCmH5j9VszbO6Q6Pjzm4",  # Eric Piccione
     "user_F0VeLnOQlWpkDncNW8rBl1V2QJ08fnDt6DcUjNATUJK",  # Scott Seymour
@@ -92,6 +94,8 @@ ALL_LANE_REPS = LANE_1_REPS | LANE_2_REPS
 # Owner display names — broader than dashboard's display map: includes removed reps
 # so the diagnostic can label every owner even if they've been hidden from rep details.
 REP_NAME_FULL = {
+    "user_rJngzi4LOFXzpNb0bLi1ZtKRlRkga2fYuf4QrYpAmIc": "Oscar Pugh",
+    "user_BaN2TstWtyF34eaQSSLG11j6DhKKm67Y6JltbIYCafO": "Ariella Irvine",
     "user_7F059xEinVentOEvkRMP77fWZyvwUiTRTUOuhD11J0e": "Robin Perkins",
     "user_wF5aATmDljO6g6AHqehRPVmfCmH5j9VszbO6Q6Pjzm4": "Eric Piccione",
     "user_F0VeLnOQlWpkDncNW8rBl1V2QJ08fnDt6DcUjNATUJK": "Scott Seymour",
