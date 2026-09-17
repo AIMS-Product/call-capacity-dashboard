@@ -1163,6 +1163,22 @@ def fetch_rep_total_meetings(start_date, end_date, all_lane_user_ids, lead_to_fu
     return rep_totals, rep_categories, non_new_meetings
 
 
+_CLOSE_USERS_CACHE = None
+
+
+def get_close_users_cached():
+    """fetch_close_users(), memoized per run — the rep-breakdown aggregator runs
+    once per day panel (14×/run) and must not refetch the user list each time."""
+    global _CLOSE_USERS_CACHE
+    if _CLOSE_USERS_CACHE is None:
+        try:
+            _CLOSE_USERS_CACHE = fetch_close_users()
+        except Exception as e:
+            log(f"  ⚠ Could not fetch Close users for name resolution: {e}")
+            _CLOSE_USERS_CACHE = {}
+    return _CLOSE_USERS_CACHE
+
+
 def aggregate_rep_breakdown_for_date(reps_uid_counter, rep_total_meetings, rep_meetings_by_category,
                                      lane_rep_names, target_date):
     """Build the per-rep [name, new, fu_resch, total, is_clamped] list for a single date.
@@ -1198,15 +1214,12 @@ def aggregate_rep_breakdown_for_date(reps_uid_counter, rep_total_meetings, rep_m
     _other_uids = {uid: n for uid, n in reps_uid_counter.items()
                    if uid not in lane_rep_names and n > 0}
     if _other_uids:
-        try:
-            _umap = fetch_close_users()
-        except Exception:
-            _umap = {}
+        _umap = get_close_users_cached()
         parts = []
         for uid, n in sorted(_other_uids.items(), key=lambda kv: -kv[1]):
             who = _umap.get(uid) or (uid[:18] + "…" if uid else "(no owner)")
             parts.append(f"{who} ×{n}")
-        log(f"  👤 'Other' bucket for {target_date}: " + " · ".join(parts))
+        log(f"  👤 Non-roster owners for {target_date} (shown by name on panel): " + " · ".join(parts))
     rep_agg = {}  # display_name -> [new, fu_resch, total, is_clamped]
     for uid in active_uids:
         new_count   = reps_uid_counter.get(uid, 0)
@@ -1222,7 +1235,7 @@ def aggregate_rep_breakdown_for_date(reps_uid_counter, rep_total_meetings, rep_m
         # (clamped) reps, fu_resch is 0 → synthetic total collapses to new_count,
         # matching the clamp behavior exactly.
         rep_total   = new_count + fu_resch
-        name        = lane_rep_names.get(uid, "Other")
+        name        = lane_rep_names.get(uid) or get_close_users_cached().get(uid) or "Other"
         if name not in rep_agg:
             rep_agg[name] = [0, 0, 0, False]
         rep_agg[name][0] += new_count
