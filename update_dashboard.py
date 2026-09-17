@@ -241,6 +241,8 @@ LEAD_FIELDS = ",".join(["id", "display_name", "name", "status_id", FIELD_FUNNEL_
 
 # Lane 1 reps — Christian Hartwell is Lane 1 Lead
 LANE_1_REPS = {
+    "user_rJngzi4LOFXzpNb0bLi1ZtKRlRkga2fYuf4QrYpAmIc",  # Oscar Pugh (added 2026-09-17)
+    "user_BaN2TstWtyF34eaQSSLG11j6DhKKm67Y6JltbIYCafO",  # Ariella Irvine (added 2026-09-17)
     "user_7F059xEinVentOEvkRMP77fWZyvwUiTRTUOuhD11J0e",  # Robin Perkins
     "user_wF5aATmDljO6g6AHqehRPVmfCmH5j9VszbO6Q6Pjzm4",  # Eric Piccione
     "user_F0VeLnOQlWpkDncNW8rBl1V2QJ08fnDt6DcUjNATUJK",  # Scott Seymour
@@ -266,6 +268,8 @@ LANE_1_REP_NAMES = {
     "user_7HSxi55O8q5jO11khvrTcAGoL2nlcoa3kZ6loAY6i78": "Joseph Vaughan",
     "user_1TKtkacQ7ZMKkcqnmCERikTYWwGltp5XUjEE9Hshple": "Shreya Bechra",
     "user_6kp6k4OcqKqFNrxGjgMUncedjiCYC6JHU8EI28F7etV": "Luke Herman",
+    "user_rJngzi4LOFXzpNb0bLi1ZtKRlRkga2fYuf4QrYpAmIc": "Oscar Pugh",      # added 2026-09-17 (new closer)
+    "user_BaN2TstWtyF34eaQSSLG11j6DhKKm67Y6JltbIYCafO": "Ariella Irvine",  # added 2026-09-17 (new closer)
     # Chris Wanke removed from rep details (no longer with company) — user_id retained in LANE_1_REPS so historical calls still count
     # Jake Skinner (user_fYWHvOuCKDuaQxSp6lROlv2rmvZZYq1kzjGvaF7OrAL), Dubem Adindu (user_1xDZSeOa8omjfxHXD80twTf8OieXfQ6tNCaYbVygtv1), and Luis Galarza (user_Ap8we63okFA5Cw9pvr5xgccvqDlIfisKVtFKt6oBe6p) removed from rep details 2026-08-12 — no longer with company; user_ids retained in LANE_1_REPS so historical calls still count
     # Danny Santolaya (user_XEbPgLixZy4dhuLp34WogOzCIChkKEnrffDnHlxOnA7), Ryan Jones (user_3nrtuEmgPYd5VA15NvrxgQxDVNWbhrNSzitEKGwi8s6, was VendHub closer), and Zac Clover (user_vyiPzY0qxbLwnW5Ubwae8vY2MLviPuozSTIsEKcyrFE) removed from rep details 2026-08-14 — no longer with company; user_ids retained in LANE_1_REPS so historical calls still count (and VendHub keeps counting Ryan-owned leads until reassigned)
