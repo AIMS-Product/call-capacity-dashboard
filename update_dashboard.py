@@ -1191,6 +1191,22 @@ def aggregate_rep_breakdown_for_date(reps_uid_counter, rep_total_meetings, rep_m
             active_uids.add(uid)
 
     # Aggregate by display name so unknown user_ids collapse into "Other".
+    # AUDIT (2026-09-17): name who lands in "Other" — since the Option A scraper
+    # injection (no lead-owner gate), meetings on scraper-owned / unassigned /
+    # departed-rep leads legitimately appear here. This log answers "who is
+    # Other?" without opening Close.
+    _other_uids = {uid: n for uid, n in reps_uid_counter.items()
+                   if uid not in lane_rep_names and n > 0}
+    if _other_uids:
+        try:
+            _umap = fetch_close_users()
+        except Exception:
+            _umap = {}
+        parts = []
+        for uid, n in sorted(_other_uids.items(), key=lambda kv: -kv[1]):
+            who = _umap.get(uid) or (uid[:18] + "…" if uid else "(no owner)")
+            parts.append(f"{who} ×{n}")
+        log(f"  👤 'Other' bucket for {target_date}: " + " · ".join(parts))
     rep_agg = {}  # display_name -> [new, fu_resch, total, is_clamped]
     for uid in active_uids:
         new_count   = reps_uid_counter.get(uid, 0)
