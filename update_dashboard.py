@@ -2901,11 +2901,15 @@ function showTab(id) {{
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 EMAIL_FROM         = os.environ.get("EMAIL_FROM", "")
 EMAIL_TO           = [e.strip() for e in os.environ.get("EMAIL_TO", "").split(",") if e.strip()]
-# Recipients for the non-closer-ownership alert (2026-09-18). Falls back to
-# EMAIL_TO when unset. Alert state persists in NONCLOSER_ALERT_CACHE (committed
-# by the workflow, like capacity_cache.json) so each meeting alerts ONCE, not
-# every 15-minute run.
-ALERT_EMAIL_TO        = [e.strip() for e in os.environ.get("ALERT_EMAIL_TO", "").split(",") if e.strip()] or EMAIL_TO
+# Recipients for the non-closer-ownership alert (2026-09-18). This is an
+# ops-hygiene alert for STEPHEN ONLY — it must NEVER fall back to EMAIL_TO
+# (the leadership EOD list; that fallback mis-sent the first alert on 9/18).
+# Uses TEST_EMAIL_TO (Stephen's address), with ALERT_EMAIL_TO as an optional
+# override. Accepts comma/semicolon/whitespace separators. If neither is set,
+# the alert is skipped AND the cache is left untouched, so alerts fire once
+# recipients are configured — nothing is silently swallowed.
+_alert_raw            = os.environ.get("ALERT_EMAIL_TO", "").strip() or os.environ.get("TEST_EMAIL_TO", "").strip()
+ALERT_EMAIL_TO        = [a.strip() for a in re.split(r"[,;\s]+", _alert_raw) if a.strip()]
 NONCLOSER_ALERT_CACHE = "noncloser_alert_cache.json"
 
 # ── Field IDs used only by the EOD email ─────────────────────────────────────
@@ -4664,9 +4668,11 @@ def check_noncloser_owned_meetings(team_data, today):
                 smtp.sendmail(EMAIL_FROM, ALERT_EMAIL_TO, msg.as_string())
             log(f"  📮 Ownership alert emailed to {ALERT_EMAIL_TO} ({len(new_items)} new)")
         else:
-            log("  ⚠ Ownership alert: email not configured this run — cache still updated so items aren't re-flagged")
+            log("  🚨 Ownership alert: no recipients/creds configured (TEST_EMAIL_TO or ALERT_EMAIL_TO + Gmail creds) — "
+                "NOT sent and NOT cached; these items re-flag until email is configured")
+            return
 
-        # Persist cache (mark new items alerted; prune entries >30 days old)
+        # Persist cache ONLY after a successful send (mark alerted; prune >30 days)
         for i in new_items:
             alerted[i["key"]] = i["owner_name"]
         cutoff = today - timedelta(days=30)
