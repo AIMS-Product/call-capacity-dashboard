@@ -1223,7 +1223,7 @@ def aggregate_rep_breakdown_for_date(reps_uid_counter, rep_total_meetings, rep_m
         for uid, n in sorted(_other_uids.items(), key=lambda kv: -kv[1]):
             who = _umap.get(uid) or (uid[:18] + "…" if uid else "(no owner)")
             parts.append(f"{who} ×{n}")
-        log(f"  👤 Non-roster owners for {target_date} (shown by name on panel): " + " · ".join(parts))
+        log(f"  👤 Non-closer-owned meetings on {target_date} (counted in totals, no rep row): " + " · ".join(parts))
     rep_agg = {}  # display_name -> [new, fu_resch, total, is_clamped]
     for uid in active_uids:
         new_count   = reps_uid_counter.get(uid, 0)
@@ -1239,7 +1239,13 @@ def aggregate_rep_breakdown_for_date(reps_uid_counter, rep_total_meetings, rep_m
         # (clamped) reps, fu_resch is 0 → synthetic total collapses to new_count,
         # matching the clamp behavior exactly.
         rep_total   = new_count + fu_resch
-        name        = lane_rep_names.get(uid) or get_close_users_cached().get(uid) or "Other"
+        name        = lane_rep_names.get(uid)
+        if name is None:
+            # Non-closer owner (scraper-owned lead, departed rep, unassigned).
+            # Their meetings still count in the day totals + funnel breakdown;
+            # the rep table is closers-only per Stephen 2026-09-18. Who they
+            # are is in the 👤 log line above.
+            continue
         if name not in rep_agg:
             rep_agg[name] = [0, 0, 0, False]
         rep_agg[name][0] += new_count
@@ -2895,6 +2901,12 @@ function showTab(id) {{
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 EMAIL_FROM         = os.environ.get("EMAIL_FROM", "")
 EMAIL_TO           = [e.strip() for e in os.environ.get("EMAIL_TO", "").split(",") if e.strip()]
+# Recipients for the non-closer-ownership alert (2026-09-18). Falls back to
+# EMAIL_TO when unset. Alert state persists in NONCLOSER_ALERT_CACHE (committed
+# by the workflow, like capacity_cache.json) so each meeting alerts ONCE, not
+# every 15-minute run.
+ALERT_EMAIL_TO        = [e.strip() for e in os.environ.get("ALERT_EMAIL_TO", "").split(",") if e.strip()] or EMAIL_TO
+NONCLOSER_ALERT_CACHE = "noncloser_alert_cache.json"
 
 # ── Field IDs used only by the EOD email ─────────────────────────────────────
 
@@ -4556,6 +4568,121 @@ def format_eod_email(data):
     return subject, plain, html
 
 
+def check_noncloser_owned_meetings(team_data, today):
+    """Ownership hygiene alert (per Stephen 2026-09-18): find counted meetings
+    whose lead owner is NOT a displayed closer (scrapers, departed reps' retained
+    user_ids, unassigned) and email the NEW ones so ownership gets corrected in
+    Close. Covers the whole 14-day window — future-dated bookings alert too, so
+    a scraper-owned lead can be reassigned BEFORE the call happens. Deduped via
+    NONCLOSER_ALERT_CACHE (one alert per lead+date, pruned after 30 days).
+    All failures are logged, never fatal."""
+    try:
+        offenders = []
+        for m in team_data.get("valid_meetings", []):
+            owner = (m.get("lead_owner") or "").strip()
+            if owner in ALL_LANE_REP_NAMES:
+                continue
+            offenders.append(m)
+        if not offenders:
+            return
+
+        # Load cache
+        alerted = {}
+        try:
+            with open(NONCLOSER_ALERT_CACHE, encoding="utf-8") as f:
+                alerted = json.load(f).get("alerted", {})
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log(f"  ⚠ Non-closer alert cache unreadable ({e}) — treating as empty")
+
+        umap = get_close_users_cached()
+        new_items = []
+        for m in offenders:
+            key = f"{m.get('lead_id','')}|{m['date'].isoformat()}"
+            if key in alerted:
+                continue
+            owner = (m.get("lead_owner") or "").strip()
+            new_items.append({
+                "key":        key,
+                "date":       m["date"],
+                "lead_id":    m.get("lead_id", ""),
+                "lead_name":  m.get("title") or "(no name)",
+                "funnel":     m.get("funnel", ""),
+                "owner_name": umap.get(owner) or (owner[:18] + "…" if owner else "(no owner)"),
+            })
+        log(f"  📮 Non-closer-owned meetings in window: {len(offenders)} total · {len(new_items)} new (unalerted)")
+        if not new_items:
+            return
+
+        # Send the alert (skip silently if email isn't configured on this run)
+        if GMAIL_APP_PASSWORD and EMAIL_FROM and ALERT_EMAIL_TO:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            new_items.sort(key=lambda i: (i["date"], i["lead_name"].lower()))
+            rows_html, rows_plain = "", []
+            for i in new_items:
+                link = f"https://app.close.com/lead/{i['lead_id']}/"
+                rows_html += (
+                    f'<tr>'
+                    f'<td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;white-space:nowrap;">{i["date"].strftime("%a %-m/%-d")}</td>'
+                    f'<td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;"><a href="{link}" style="color:#1b5e1b;">{i["lead_name"]}</a></td>'
+                    f'<td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;color:#a02929;font-weight:700;">{i["owner_name"]}</td>'
+                    f'<td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;color:#888;">{i["funnel"]}</td>'
+                    f'</tr>')
+                rows_plain.append(f"  {i['date'].strftime('%a %m/%d')}  {i['lead_name']}  ·  owner: {i['owner_name']}  ·  {i['funnel']}\n    {link}")
+            subject = f"⚠ Ownership Alert — {len(new_items)} meeting{'s' if len(new_items) != 1 else ''} on non-closer-owned leads"
+            plain = ("Meetings counted on the Call Capacity Dashboard whose lead owner is not a closer.\n"
+                     "These count in totals but get no rep credit until ownership is corrected in Close.\n\n"
+                     + "\n".join(rows_plain)
+                     + "\n\nFix: open each lead and set Lead Owner to the closer taking the call. "
+                       "Attribution corrects on the next dashboard run. Each meeting alerts once.\n")
+            html = f"""<html><body style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#333;max-width:760px;">
+<div style="background:#173317;color:#fff;padding:16px 24px;border-radius:8px;">
+  <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;opacity:0.8;">Call Capacity Dashboard</div>
+  <div style="font-size:20px;font-weight:800;margin-top:4px;">⚠ Ownership Alert — non-closer-owned meetings</div>
+  <div style="margin-top:6px;font-size:13px;opacity:0.9;">{len(new_items)} new · counted in totals, no rep credit until reassigned</div>
+</div>
+<table style="border-collapse:collapse;font-size:14px;width:100%;margin-top:14px;">
+<tr><th style="text-align:left;padding:6px 10px;border-bottom:2px solid #ddd;color:#888;font-size:12px;">Meeting Date</th>
+<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #ddd;color:#888;font-size:12px;">Lead</th>
+<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #ddd;color:#888;font-size:12px;">Current Owner</th>
+<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #ddd;color:#888;font-size:12px;">Funnel</th></tr>
+{rows_html}
+</table>
+<p style="color:#888;font-size:13px;margin-top:14px;">Fix: open the lead and set <strong>Lead Owner</strong> to the closer taking the call — attribution corrects on the next run. Each meeting alerts once (state in noncloser_alert_cache.json).</p>
+</body></html>"""
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = f"Dashboard Alerts <{EMAIL_FROM}>"
+            msg["To"]      = ", ".join(ALERT_EMAIL_TO)
+            msg.attach(MIMEText(plain, "plain"))
+            msg.attach(MIMEText(html,  "html"))
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+                smtp.login(EMAIL_FROM, GMAIL_APP_PASSWORD)
+                smtp.sendmail(EMAIL_FROM, ALERT_EMAIL_TO, msg.as_string())
+            log(f"  📮 Ownership alert emailed to {ALERT_EMAIL_TO} ({len(new_items)} new)")
+        else:
+            log("  ⚠ Ownership alert: email not configured this run — cache still updated so items aren't re-flagged")
+
+        # Persist cache (mark new items alerted; prune entries >30 days old)
+        for i in new_items:
+            alerted[i["key"]] = i["owner_name"]
+        cutoff = today - timedelta(days=30)
+        pruned = {}
+        for k, v in alerted.items():
+            try:
+                if date.fromisoformat(k.split("|", 1)[1]) >= cutoff:
+                    pruned[k] = v
+            except (ValueError, IndexError):
+                pass
+        with open(NONCLOSER_ALERT_CACHE, "w", encoding="utf-8") as f:
+            json.dump({"saved_at": datetime.now(PACIFIC).isoformat(), "alerted": pruned}, f)
+    except Exception as e:
+        log(f"  ❌ Non-closer ownership alert failed (dashboard unaffected): {e}")
+
+
 def send_eod_email(rolling_data, today, recipients=None):
     """
     Build and send the EOD email via Gmail SMTP.
@@ -4689,6 +4816,9 @@ def main():
 
     log("\n── Team (single-team mode) ──")
     team_data = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=ALL_LANE_REPS, lane_label="Team", rep_total_meetings=rep_total_meetings, rep_meetings_by_category=rep_meetings_by_category, scraper_meetings=scraper_meetings)
+
+    # Ownership hygiene: email NEW meetings on non-closer-owned leads (once each)
+    check_noncloser_owned_meetings(team_data, today)
 
 
     # ── Non-new meeting details (F/U / Resch / Other panel section) ─────────────
