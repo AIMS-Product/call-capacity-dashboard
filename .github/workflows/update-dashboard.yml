@@ -31,6 +31,7 @@ jobs:
           EMAIL_FROM:         ${{ secrets.EMAIL_FROM }}
           EMAIL_TO:           ${{ secrets.EMAIL_TO }}
           ALERT_EMAIL_TO:     ${{ secrets.ALERT_EMAIL_TO }}
+          TEST_EMAIL_TO:      ${{ secrets.TEST_EMAIL_TO }}
           PYTHONUNBUFFERED:   "1"
         run: python -u update_dashboard.py
 
