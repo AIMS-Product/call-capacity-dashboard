@@ -37,6 +37,9 @@ SCRAPER_TITLE_MAP = [
     (re.compile(r"vendingpren[eu]+rs?\s+launch\s*-?\s*next\s+steps", re.IGNORECASE), "Dana Lesiuk", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+pathway\s*-?\s*next\s+steps", re.IGNORECASE), "Naria Torres", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+blueprint\s*-?\s*next\s+steps", re.IGNORECASE), "Melia King", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+keystone\s*-?\s*next\s+steps", re.IGNORECASE), "Brad Savage", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+ascent\s*-?\s*next\s+steps", re.IGNORECASE), "Owen Hart", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+summit\s*-?\s*next\s+steps", re.IGNORECASE), "Rob Maxfield", "next_steps_title"),
     # William's second Lane 2 title. This is intentionally surfaced with the
     # rule name so we can inspect whether it conflicts with closer-call titles.
     (re.compile(r"\bvending\s+consult\s+call\b", re.IGNORECASE), "William Nowak", "william_consult_call"),

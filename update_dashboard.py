@@ -2933,30 +2933,29 @@ LOST_STATUS_LABEL  = "💔 Lost"
 # List order = display order in the email. Goals can vary per setter over time —
 # update the tuples as they change.
 # Roster per lane2-technical-reference (2026-08-06, §6), confirmed by Stephen 2026-08-07.
-# Two Jacobs — display names disambiguated. Goals default to 3/day.
-# Sydney Boyd + Connor George are pending (no Close user yet) — add here once their
-# Reactivation - Setter Name dropdown values exist in Close.
+# Full-time goals default to 3/day; part-time goals are 1/day.
+# Sydney Boyd is pending (no Close user yet) — add her once the Reactivation -
+# Setter Name dropdown value exists in Close.
 # Jennifer Padilla + Juan Cajina removed 2026-08-07 (no longer with company) — their
 # historical bookings still render on past days' data, just not tracked going forward.
+# Jacob Hepner, Jacob Herbig, Kelly Schrader, Spencer Reynolds, Amy Mulch,
+# Abigail Garza, and Dana Lesiuk removed from the active EOD roster 2026-09-22.
+# Their title mappings remain below so older deal attribution still resolves.
 SCRAPER_SETTERS = [
-    # Roster per SCRAPER_SETTER_SETUP doc 2026-08-26. Goals default 3/day.
+    # Roster per SCRAPER_SETTER_SETUP doc 2026-08-26.
     ("Vince Bartolini",   "Vince",      3),
-    ("Jacob Hepner",      "Jacob Hep.", 3),
-    ("Jacob Herbig",      "Jacob Her.", 3),
     ("Charlie Ingram",    "Charlie",    3),
     ("Pearl Sathekge",    "Pearl",      3),
-    ("Kelly Schrader",    "Kelly",      3),
     ("William Nowak",     "William",    3),
     ("August Young",      "August",     3),   # added 2026-08-26
-    ("Spencer Reynolds",  "Spencer",    3),   # added 2026-08-26
-    ("Amy Mulch",         "Amy",        3),   # added 2026-08-26
-    ("Cassie Caraballo",  "Cassie",     3),   # added 2026-08-26
-    ("Jessica Zatkin",    "Jessica",    3),   # added 2026-08-26
-    ("Abigail Garza",     "Abigail",    3),   # added 2026-08-26
+    ("Cassie Caraballo",  "Cassie",     1),   # part time
+    ("Jessica Zatkin",    "Jessica",    1),   # part time
     ("Connor George",     "Connor",     3),   # added 2026-08-26 — Calendly link pending
-    ("Dana Lesiuk",       "Dana",       3),   # added 2026-08-26 — Calendly link pending
-    ("Naria Torres",      "Naria",      3),   # added 2026-08-26 — Calendly link pending
-    ("Melia King",        "Melia",      3),   # added 2026-08-26 — Calendly link pending
+    ("Naria Torres",      "Naria",      1),   # part time
+    ("Melia King",        "Melia",      1),   # part time
+    ("Brad Savage",       "Brad",       3),
+    ("Owen Hart",         "Owen",       3),
+    ("Rob Maxfield",      "Rob",        3),
 ]
 
 # Per-setter meeting-title map (ATTRIBUTION only — detection is the "Next Steps"
@@ -2988,6 +2987,9 @@ SCRAPER_TITLE_MAP = {
     "Vendingpreneurs Launch - Next Steps":      "Dana Lesiuk",
     "Vendingpreneurs Pathway - Next Steps":     "Naria Torres",
     "Vendingpreneurs Blueprint - Next Steps":   "Melia King",
+    "Vendingpreneurs Keystone - Next Steps":    "Brad Savage",
+    "Vendingpreneurs Ascent - Next Steps":      "Owen Hart",
+    "Vendingpreneurs Summit - Next Steps":      "Rob Maxfield",
 }
 _TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
 
@@ -3164,6 +3166,9 @@ LANE2_SETUP_TITLE_MAP = [
     (re.compile(r"vendingpren[eu]+rs?\s+launch\s*-?\s*next\s+steps", re.IGNORECASE), "Dana Lesiuk", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+pathway\s*-?\s*next\s+steps", re.IGNORECASE), "Naria Torres", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+blueprint\s*-?\s*next\s+steps", re.IGNORECASE), "Melia King", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+keystone\s*-?\s*next\s+steps", re.IGNORECASE), "Brad Savage", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+ascent\s*-?\s*next\s+steps", re.IGNORECASE), "Owen Hart", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+summit\s*-?\s*next\s+steps", re.IGNORECASE), "Rob Maxfield", "next_steps_title"),
     (re.compile(r"\bvending\s+consult\s+call\b", re.IGNORECASE), "William Nowak", "william_consult_call"),
 ]
 
