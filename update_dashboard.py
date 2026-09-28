@@ -2637,35 +2637,40 @@ def csv_export_snippet(csv_filename, button_only=False):
 
 
 # ─── Weekly Summary HTML ─────────────────────────────────────────────────────
+# Reworked 2026-09-28 (per Stephen): utilization is GOAL-based (get_capacity_target,
+# 42/day tier) and counts MON–FRI ONLY — weekends show booked counts but no goal
+# and no utilization. Replaces the old Calendly-capacity-snapshot math, which
+# mixed weekend snapshot noise into Avg Utilization (e.g. a 108% Sunday).
 
 def generate_weekly_html(data, week_start):
     dates = data["dates"]; daily = data["daily_data"]
     week_end = week_start + timedelta(days=6)
     total_booked = sum(daily[d]["booked"] for d in dates)
-    total_cap = sum(daily[d]["capacity"] for d in dates)
-    avg_util = (total_booked / total_cap * 100) if total_cap > 0 else 0
+
+    weekday_dates  = [d for d in dates if d.weekday() < 5]
+    weekday_booked = sum(daily[d]["booked"] for d in weekday_dates)
+    weekday_goal   = sum(get_capacity_target(d) or 0 for d in weekday_dates)
+    goal_pct       = (weekday_booked / weekday_goal * 100) if weekday_goal > 0 else 0
 
     date_headers = "".join(f'<th class="col-date">{d.strftime("%a").upper()}<br>{d.strftime("%m/%d")}</th>' for d in dates)
     date_headers += '<th class="col-date" style="background:#f0f0f0;">TOTAL</th>'
     n_cols = len(dates) + 1
 
-    cap_r = booked_r = avail_r = util_r = ""
-    tc_cap = tc_bk = 0
+    goal_r = booked_r = util_r = ""
     for d in dates:
-        c = daily[d]["capacity"]; b = daily[d]["booked"]; tc_cap += c; tc_bk += b
-        cap_r += f'<td class="num">{c if c > 0 else "–"}</td>'
+        b = daily[d]["booked"]
+        g = get_capacity_target(d)  # None on Sat/Sun
         booked_r += f'<td class="num {"booked" if b > 0 else "zero"}">{b}</td>'
-        avail_r += f'<td class="num">{c - b if c > 0 else "–"}</td>'
-        if c > 0:
-            pct = b / c * 100
+        if g:
+            pct = b / g * 100
+            goal_r += f'<td class="num">{g}</td>'
             util_r += f'<td class="num {util_class(pct)}">{pct:.1f}%</td>'
         else:
-            util_r += f'<td class="num">N/A</td>'
-    ou = (tc_bk / tc_cap * 100) if tc_cap > 0 else 0
-    cap_r += f'<td class="num total-num">{tc_cap}</td>'
-    booked_r += f'<td class="num total-num booked">{tc_bk}</td>'
-    avail_r += f'<td class="num total-num">{tc_cap - tc_bk}</td>'
-    util_r += f'<td class="num total-num {util_class(ou)}">{ou:.1f}%</td>'
+            goal_r += '<td class="num" style="color:#ccc;">–</td>'
+            util_r += '<td class="num" style="color:#ccc;">–</td>'
+    goal_r   += f'<td class="num total-num">{weekday_goal}</td>'
+    booked_r += f'<td class="num total-num booked">{total_booked}</td>'
+    util_r   += f'<td class="num total-num {util_class(goal_pct)}">{goal_pct:.1f}%</td>'
 
     # Simple funnel totals for weekly
     funnel_totals = {}
@@ -2679,17 +2684,18 @@ def generate_weekly_html(data, week_start):
 
     title = f"Weekly Summary — {week_start.strftime('%b %-d')} to {week_end.strftime('%b %-d, %Y')}"
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>{title}</title><style>{COMMON_CSS}</style></head><body>
-{html_header_bar(title, "Monday through Sunday · First Meetings Only", week_start.strftime("%B %-d, %Y"), "Generated: " + datetime.now(PACIFIC).strftime("%b %-d at %I:%M %p %Z"))}
+{html_header_bar(title, "Monday through Sunday · First Meetings Only · Goal % counts Mon–Fri only", week_start.strftime("%B %-d, %Y"), "Generated: " + datetime.now(PACIFIC).strftime("%b %-d at %I:%M %p %Z"))}
 <div class="wrap">
   <div class="summary-cards">
     <div class="s-card"><div class="s-label">Total Booked</div><div class="s-value green">{total_booked}</div></div>
-    <div class="s-card"><div class="s-label">Total Capacity</div><div class="s-value">{total_cap}</div></div>
-    <div class="s-card"><div class="s-label">Avg Utilization</div><div class="s-value {util_class(avg_util)}">{avg_util:.1f}%</div></div>
+    <div class="s-card"><div class="s-label">Booked Mon–Fri</div><div class="s-value">{weekday_booked}</div></div>
+    <div class="s-card"><div class="s-label">Weekday Goal</div><div class="s-value">{weekday_goal}</div></div>
+    <div class="s-card"><div class="s-label">Goal % (Mon–Fri)</div><div class="s-value {util_class(goal_pct)}">{goal_pct:.1f}%</div></div>
   </div>
   <div class="card"><div class="sec">DAILY BREAKDOWN</div>
     <table><colgroup><col style="width:200px"><col span="{n_cols}"></colgroup>
     <thead><tr><th></th>{date_headers}</tr></thead>
-    <tbody><tr><td class="metric">Capacity</td>{cap_r}</tr><tr><td class="metric">Booked</td>{booked_r}</tr><tr><td class="metric">Available</td>{avail_r}</tr><tr><td class="metric">Utilization %</td>{util_r}</tr></tbody></table>
+    <tbody><tr><td class="metric">Goal</td>{goal_r}</tr><tr><td class="metric">Booked</td>{booked_r}</tr><tr><td class="metric">Goal %</td>{util_r}</tr></tbody></table>
   </div>
   <div class="card"><div class="sec">FUNNEL TOTALS</div>
     <table style="table-layout:auto; max-width:400px;"><thead><tr><th>Funnel</th><th>Total</th></tr></thead><tbody>{funnel_rows}</tbody></table>
@@ -2703,8 +2709,11 @@ def generate_weekly_html(data, week_start):
 def generate_monthly_html(data, month_date):
     dates = data["dates"]; daily = data["daily_data"]
     total_booked = sum(daily[d]["booked"] for d in dates)
-    total_cap = sum(daily[d]["capacity"] for d in dates)
-    avg_util = (total_booked / total_cap * 100) if total_cap > 0 else 0
+    # Goal-based, Mon–Fri only (2026-09-28) — same rule as the weekly summary.
+    weekday_dates  = [d for d in dates if d.weekday() < 5]
+    weekday_booked = sum(daily[d]["booked"] for d in weekday_dates)
+    weekday_goal   = sum(get_capacity_target(d) or 0 for d in weekday_dates)
+    goal_pct       = (weekday_booked / weekday_goal * 100) if weekday_goal > 0 else 0
 
     day_names = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
     week_header = "".join(f'<th class="col-date">{dn}</th>' for dn in day_names)
@@ -2749,8 +2758,9 @@ def generate_monthly_html(data, month_date):
 <div class="wrap">
   <div class="summary-cards">
     <div class="s-card"><div class="s-label">Total Booked</div><div class="s-value green">{total_booked}</div></div>
-    <div class="s-card"><div class="s-label">Total Capacity</div><div class="s-value">{total_cap}</div></div>
-    <div class="s-card"><div class="s-label">Avg Utilization</div><div class="s-value {util_class(avg_util)}">{avg_util:.1f}%</div></div>
+    <div class="s-card"><div class="s-label">Booked Mon–Fri</div><div class="s-value">{weekday_booked}</div></div>
+    <div class="s-card"><div class="s-label">Weekday Goal</div><div class="s-value">{weekday_goal}</div></div>
+    <div class="s-card"><div class="s-label">Goal % (Mon–Fri)</div><div class="s-value {util_class(goal_pct)}">{goal_pct:.1f}%</div></div>
   </div>
   <div class="card"><div class="sec">WEEK BY WEEK</div>
     <table><colgroup><col style="width:200px"><col span="8"></colgroup>
@@ -2933,29 +2943,30 @@ LOST_STATUS_LABEL  = "💔 Lost"
 # List order = display order in the email. Goals can vary per setter over time —
 # update the tuples as they change.
 # Roster per lane2-technical-reference (2026-08-06, §6), confirmed by Stephen 2026-08-07.
-# Full-time goals default to 3/day; part-time goals are 1/day.
-# Sydney Boyd is pending (no Close user yet) — add her once the Reactivation -
-# Setter Name dropdown value exists in Close.
+# Two Jacobs — display names disambiguated. Goals default to 3/day.
+# Sydney Boyd + Connor George are pending (no Close user yet) — add here once their
+# Reactivation - Setter Name dropdown values exist in Close.
 # Jennifer Padilla + Juan Cajina removed 2026-08-07 (no longer with company) — their
 # historical bookings still render on past days' data, just not tracked going forward.
-# Jacob Hepner, Jacob Herbig, Kelly Schrader, Spencer Reynolds, Amy Mulch,
-# Abigail Garza, and Dana Lesiuk removed from the active EOD roster 2026-09-22.
-# Their title mappings remain below so older deal attribution still resolves.
 SCRAPER_SETTERS = [
-    # Roster per SCRAPER_SETTER_SETUP doc 2026-08-26.
+    # Roster per SCRAPER_SETTER_SETUP doc 2026-08-26. Goals default 3/day.
     ("Vince Bartolini",   "Vince",      3),
+    ("Jacob Hepner",      "Jacob Hep.", 3),
+    ("Jacob Herbig",      "Jacob Her.", 3),
     ("Charlie Ingram",    "Charlie",    3),
     ("Pearl Sathekge",    "Pearl",      3),
+    ("Kelly Schrader",    "Kelly",      3),
     ("William Nowak",     "William",    3),
     ("August Young",      "August",     3),   # added 2026-08-26
-    ("Cassie Caraballo",  "Cassie",     1),   # part time
-    ("Jessica Zatkin",    "Jessica",    1),   # part time
+    ("Spencer Reynolds",  "Spencer",    3),   # added 2026-08-26
+    ("Amy Mulch",         "Amy",        3),   # added 2026-08-26
+    ("Cassie Caraballo",  "Cassie",     3),   # added 2026-08-26
+    ("Jessica Zatkin",    "Jessica",    3),   # added 2026-08-26
+    ("Abigail Garza",     "Abigail",    3),   # added 2026-08-26
     ("Connor George",     "Connor",     3),   # added 2026-08-26 — Calendly link pending
-    ("Naria Torres",      "Naria",      1),   # part time
-    ("Melia King",        "Melia",      1),   # part time
-    ("Brad Savage",       "Brad",       3),
-    ("Owen Hart",         "Owen",       3),
-    ("Rob Maxfield",      "Rob",        3),
+    ("Dana Lesiuk",       "Dana",       3),   # added 2026-08-26 — Calendly link pending
+    ("Naria Torres",      "Naria",      3),   # added 2026-08-26 — Calendly link pending
+    ("Melia King",        "Melia",      3),   # added 2026-08-26 — Calendly link pending
 ]
 
 # Per-setter meeting-title map (ATTRIBUTION only — detection is the "Next Steps"
@@ -2987,9 +2998,6 @@ SCRAPER_TITLE_MAP = {
     "Vendingpreneurs Launch - Next Steps":      "Dana Lesiuk",
     "Vendingpreneurs Pathway - Next Steps":     "Naria Torres",
     "Vendingpreneurs Blueprint - Next Steps":   "Melia King",
-    "Vendingpreneurs Keystone - Next Steps":    "Brad Savage",
-    "Vendingpreneurs Ascent - Next Steps":      "Owen Hart",
-    "Vendingpreneurs Summit - Next Steps":      "Rob Maxfield",
 }
 _TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
 
@@ -3166,9 +3174,6 @@ LANE2_SETUP_TITLE_MAP = [
     (re.compile(r"vendingpren[eu]+rs?\s+launch\s*-?\s*next\s+steps", re.IGNORECASE), "Dana Lesiuk", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+pathway\s*-?\s*next\s+steps", re.IGNORECASE), "Naria Torres", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+blueprint\s*-?\s*next\s+steps", re.IGNORECASE), "Melia King", "next_steps_title"),
-    (re.compile(r"vendingpren[eu]+rs?\s+keystone\s*-?\s*next\s+steps", re.IGNORECASE), "Brad Savage", "next_steps_title"),
-    (re.compile(r"vendingpren[eu]+rs?\s+ascent\s*-?\s*next\s+steps", re.IGNORECASE), "Owen Hart", "next_steps_title"),
-    (re.compile(r"vendingpren[eu]+rs?\s+summit\s*-?\s*next\s+steps", re.IGNORECASE), "Rob Maxfield", "next_steps_title"),
     (re.compile(r"\bvending\s+consult\s+call\b", re.IGNORECASE), "William Nowak", "william_consult_call"),
 ]
 
