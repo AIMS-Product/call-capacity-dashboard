@@ -2966,6 +2966,7 @@ EOD_VP_SETTERS = [
 # Dashboard history still needs retired setters for old Next Steps meetings.
 # The email uses only EOD_VP_SETTERS; this broader set is for attribution.
 SCRAPER_SETTERS = EOD_VP_SETTERS + [
+    ("Igor Trojanowski", "Igor", 0),
     ("Jacob Hepner", "Jacob Hep.", 3),
     ("Jacob Herbig", "Jacob Her.", 3),
     ("Kelly Schrader", "Kelly", 3),
@@ -3015,6 +3016,7 @@ SCRAPER_TITLE_MAP = {
     "Vendingpreneurs Keystone - Next Steps":    "Brad Savage",
     "Vendingpreneurs Ascent - Next Steps":      "Owen Hart",
     "Vendingpreneurs Summit - Next Steps":      "Rob Maxfield",
+    "Vendingpreneurs Growth - Next Steps":      "Igor Trojanowski",
 }
 _TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
 
