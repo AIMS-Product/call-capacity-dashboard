@@ -2931,42 +2931,56 @@ CF_ICP             = "cf_OcYP2vXsG2tvbMDubwQNcidiqVegXa7CsyWkOR3f7KN"
 CF_LOST_REASON     = "cf_R4i05fLNOQP8yveAs4ofTMMYGAQnkLLklunP4lov2Bt"  # lead-level field; label is misleading
 CF_VENDHUB         = "cf_2oYFNCsi4dcrjcIS6xFvGf37RGtraixl8jHYinwta9m"  # dropdown; presence = counted VendHub call
 CF_REACT_SETTER    = "cf_vz6kNiu4ItFxRA8Y9HKlWIoQMq3TsdaQqKekQ2YuxVk"  # Reactivation Setter Name; used for scraper attribution
+CF_BUSINESS_LINE   = "cf_aJlNlilQZIgLLuhcymNN8fiOzewnFxrbWjLZFPmsucO"  # BTC Business Line
+TLG_BUSINESS_LINE  = "The Land Geek (TLG)"
 
 # Label of the Close lead status that means "deal lost". If the label ever
 # changes in Close, update it here — we filter by string match on new_status_label.
 LOST_STATUS_LABEL  = "💔 Lost"
 
-# Scraper setters — used in the EOD email "Scraper Bookings" section.
+# Active VP setters — used in the EOD email "VP Scraper Bookings" section.
 # The FIRST tuple element is the exact Close dropdown value on the Reactivation
 # Setter Name field (see FIELD_REACTIVATION_SETTER); the SECOND is the short
 # display name shown in the email; the THIRD is the per-day booking target.
 # List order = display order in the email. Goals can vary per setter over time —
 # update the tuples as they change.
-# Roster per lane2-technical-reference (2026-08-06, §6), confirmed by Stephen 2026-08-07.
-# Two Jacobs — display names disambiguated. Goals default to 3/day.
-# Sydney Boyd + Connor George are pending (no Close user yet) — add here once their
-# Reactivation - Setter Name dropdown values exist in Close.
-# Jennifer Padilla + Juan Cajina removed 2026-08-07 (no longer with company) — their
-# historical bookings still render on past days' data, just not tracked going forward.
-SCRAPER_SETTERS = [
-    # Roster per SCRAPER_SETTER_SETUP doc 2026-08-26. Goals default 3/day.
-    ("Vince Bartolini",   "Vince",      3),
-    ("Jacob Hepner",      "Jacob Hep.", 3),
-    ("Jacob Herbig",      "Jacob Her.", 3),
-    ("Charlie Ingram",    "Charlie",    3),
-    ("Pearl Sathekge",    "Pearl",      3),
-    ("Kelly Schrader",    "Kelly",      3),
-    ("William Nowak",     "William",    3),
-    ("August Young",      "August",     3),   # added 2026-08-26
-    ("Spencer Reynolds",  "Spencer",    3),   # added 2026-08-26
-    ("Amy Mulch",         "Amy",        3),   # added 2026-08-26
-    ("Cassie Caraballo",  "Cassie",     3),   # added 2026-08-26
-    ("Jessica Zatkin",    "Jessica",    3),   # added 2026-08-26
-    ("Abigail Garza",     "Abigail",    3),   # added 2026-08-26
-    ("Connor George",     "Connor",     3),   # added 2026-08-26 — Calendly link pending
-    ("Dana Lesiuk",       "Dana",       3),   # added 2026-08-26 — Calendly link pending
-    ("Naria Torres",      "Naria",      3),   # added 2026-08-26 — Calendly link pending
-    ("Melia King",        "Melia",      3),   # added 2026-08-26 — Calendly link pending
+# VP roster supplied 2026-10-02. Part-time goals are 1/day; full-time goals
+# are 3/day. Igor and Mattheus are omitted for now.
+EOD_VP_SETTERS = [
+    ("Naria Torres",     "Naria",     1),
+    ("Melia King",       "Melia",     1),
+    ("Jessica Zatkin",   "Jessica",   1),
+    ("Cassie Caraballo", "Cassie",    1),
+    ("Ariella Irvine",   "Ariella",   3),
+    ("August Young",     "August",    3),
+    ("Connor George",    "Connor",    3),
+    ("Charlie Ingram",   "Charlie",   3),
+    ("Pearl Sathekge",   "Pearl",     3),
+    ("William Nowak",    "William",   3),
+    ("Vince Bartolini",  "Vince",     3),
+    ("Brad Savage",      "Brad",      3),
+    ("Owen Hart",        "Owen",      3),
+    ("Rob Maxfield",     "Rob",       3),
+]
+
+# Dashboard history still needs retired setters for old Next Steps meetings.
+# The email uses only EOD_VP_SETTERS; this broader set is for attribution.
+SCRAPER_SETTERS = EOD_VP_SETTERS + [
+    ("Jacob Hepner", "Jacob Hep.", 3),
+    ("Jacob Herbig", "Jacob Her.", 3),
+    ("Kelly Schrader", "Kelly", 3),
+    ("Spencer Reynolds", "Spencer", 3),
+    ("Amy Mulch", "Amy", 3),
+    ("Abigail Garza", "Abigail", 3),
+    ("Dana Lesiuk", "Dana", 3),
+]
+
+# TLG is a separate offer and appears in its own EOD table. Jonathan is
+# omitted for now. All current TLG goals are 1/day.
+TLG_SETTERS = [
+    ("Josh Stoffel", "Josh", 1),
+    ("Catalina Villalba-Gallego", "Catalina", 1),
+    ("Connor Mason", "Connor Mason", 1),
 ]
 
 # Per-setter meeting-title map (ATTRIBUTION only — detection is the "Next Steps"
@@ -2998,8 +3012,18 @@ SCRAPER_TITLE_MAP = {
     "Vendingpreneurs Launch - Next Steps":      "Dana Lesiuk",
     "Vendingpreneurs Pathway - Next Steps":     "Naria Torres",
     "Vendingpreneurs Blueprint - Next Steps":   "Melia King",
+    "Vendingpreneurs Keystone - Next Steps":    "Brad Savage",
+    "Vendingpreneurs Ascent - Next Steps":      "Owen Hart",
+    "Vendingpreneurs Summit - Next Steps":      "Rob Maxfield",
 }
 _TITLE_KEYS_LONGEST_FIRST = sorted(SCRAPER_TITLE_MAP, key=len, reverse=True)
+
+TLG_TITLE_MAP = {
+    "TLG Compass - Next Steps":            "Josh Stoffel",
+    "Vendingpreneurs Compass - Next Steps": "Josh Stoffel",
+    "TLG Elevate - Next Steps":            "Catalina Villalba-Gallego",
+    "TLG Vanguard - Next Steps":           "Connor Mason",
+}
 
 # Detection rule (per Stephen 2026-09-01): ANY meeting whose title contains the
 # phrase "Next Steps" is a scraper-booked meeting. The SCRAPER_SETTER_SETUP doc
@@ -3071,9 +3095,10 @@ def read_setter_user_value(lead):
 # path for the Setter User field — immune to Close profile names, which for the
 # scraper team are FIRST NAMES ONLY ("August", "Connor"…), discovered via the
 # 2026-09-02 production log. uids verified against that log + the Lane 2
-# technical reference §6. Amy/Abigail/Dana/Naria/Melia: uids unknown — their
-# unique first names resolve via match_roster_setter's first-name fallback.
+# technical reference §6. Legacy setter ids remain for historical attribution;
+# match_roster_setter filters them out of active booking counts.
 SCRAPER_USER_IDS = {
+    "user_BaN2TstWtyF34eaQSSLG11j6DhKKm67Y6JltbIYCafO": "Ariella Irvine",
     "user_dQi0iL0igjCKtEXPSsv8ALDZMAz9orJxL60O7Q921jy": "Vince Bartolini",
     "user_IeWR2TlhpjqoXy3K6jX7u9C8c83iBnHXSIvFZpotF3z": "Jacob Hepner",
     "user_p2y1gLbIgUb9xognGTvuXoRpzp4Ro8QkO20ltgF1CvJ": "Jacob Herbig",
@@ -3086,6 +3111,17 @@ SCRAPER_USER_IDS = {
     "user_Hoijs8g8hxab7NN7tMVvC4dpzwHcxSgkIuHeBRphyUL": "Cassie Caraballo",
     "user_WmBJj4uIsE9WRLKMn5Y1i8MinIDJG5GjOHPeX2sUJCp": "Jessica Zatkin",
     "user_YlAbrpKa9iKWFt351Dk1BC4Cmr4SXHKDsSDMG4hnVHi": "Connor George",
+    "user_PBMfAYkPSkMaYK58gXuG70Vu1SLd2bsG3Mvys6RZNgY": "Naria Torres",
+    "user_32021LR58tWOSl2MX2nFVMSP8PoaGV1DjZEF0v0yGXs": "Melia King",
+    "user_iYReXOSE5Mx1NlCsyASyZMBP5orKZjVFSvKonrtQRhF": "Brad Savage",
+    "user_8UDC7WAhyYNxEyhrh3flGsYUqmXh9UVkn7Z1LOlY6Lm": "Owen Hart",
+    "user_eX4cSEZl12Xns7Bvce6738CEXt9f81MiPkSPkYx1tgO": "Rob Maxfield",
+}
+
+TLG_USER_IDS = {
+    "user_WdDkCcFt7B6F7nPJJiWGi6vl5g5jeqbluErfy6Syrfs": "Josh Stoffel",
+    "user_SstZur4m512IhMhhIWPIehvCpkkSndAKZiWPhQ13jaQ": "Catalina Villalba-Gallego",
+    "user_RXqPV5zrF4dPBwGJtxs8W77fNgCXir4RrT0K0TGNaoh": "Connor Mason",
 }
 
 # normalized name -> canonical SCRAPER_SETTERS close_name (built at import)
@@ -3144,6 +3180,23 @@ def resolve_scraper_title(title):
     return None
 
 
+def match_tlg_setter(name):
+    """Resolve a TLG setter from a Close profile or text field."""
+    normalized = _norm_name(name)
+    for close_name, _, _ in TLG_SETTERS:
+        if normalized in {_norm_name(close_name), _norm_name(close_name.split()[0])}:
+            return close_name
+    return None
+
+
+def resolve_tlg_title(title):
+    normalized = (title or "").strip().casefold()
+    for prefix, close_name in TLG_TITLE_MAP.items():
+        if normalized.startswith(prefix.casefold()):
+            return close_name
+    return None
+
+
 def is_next_steps_title(title):
     """True if a meeting title identifies a scraper-booked Next Steps meeting:
     the title contains "Next Steps" (case-insensitive). Attribution is handled
@@ -3174,6 +3227,9 @@ LANE2_SETUP_TITLE_MAP = [
     (re.compile(r"vendingpren[eu]+rs?\s+launch\s*-?\s*next\s+steps", re.IGNORECASE), "Dana Lesiuk", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+pathway\s*-?\s*next\s+steps", re.IGNORECASE), "Naria Torres", "next_steps_title"),
     (re.compile(r"vendingpren[eu]+rs?\s+blueprint\s*-?\s*next\s+steps", re.IGNORECASE), "Melia King", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+keystone\s*-?\s*next\s+steps", re.IGNORECASE), "Brad Savage", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+ascent\s*-?\s*next\s+steps", re.IGNORECASE), "Owen Hart", "next_steps_title"),
+    (re.compile(r"vendingpren[eu]+rs?\s+summit\s*-?\s*next\s+steps", re.IGNORECASE), "Rob Maxfield", "next_steps_title"),
     (re.compile(r"\bvending\s+consult\s+call\b", re.IGNORECASE), "William Nowak", "william_consult_call"),
 ]
 
@@ -3942,6 +3998,7 @@ def build_eod_data(rolling_data, today):
         f"custom.{CF_REACT_SETTER}",
         f"custom.{CF_FUNNEL_DEAL}",
         f"custom.{CF_SHOW_UP}",
+        f"custom.{CF_BUSINESS_LINE}",
     ] + get_setter_user_keys())
     scraper_leads = {}
     for lid in dict.fromkeys([m["lead_id"] for m in ns_meetings_today] + ns_set_lids):
@@ -3963,8 +4020,11 @@ def build_eod_data(rolling_data, today):
         return match_roster_setter((lead.get(f"custom.{CF_REACT_SETTER}") or "").strip())
 
     scraper_stats     = {close_name: {"booked": 0, "shown": 0}
-                         for close_name, _, _ in SCRAPER_SETTERS}
-    scraper_set_today = {close_name: 0 for close_name, _, _ in SCRAPER_SETTERS}
+                         for close_name, _, _ in EOD_VP_SETTERS}
+    scraper_set_today = {close_name: 0 for close_name, _, _ in EOD_VP_SETTERS}
+    tlg_stats         = {close_name: {"booked": 0, "shown": 0}
+                         for close_name, _, _ in TLG_SETTERS}
+    tlg_set_today     = {close_name: 0 for close_name, _, _ in TLG_SETTERS}
 
     def _attribute_meeting(m):
         """Setter attribution priority (2026-09-01): the lead's Reactivation -
@@ -3973,20 +4033,43 @@ def build_eod_data(rolling_data, today):
         Titles can lie when Calendly links get renamed/re-provisioned; the user
         field can't."""
         lead = scraper_leads.get(m["lead_id"]) or {}
+        if (lead.get(f"custom.{CF_BUSINESS_LINE}") or "").strip() == TLG_BUSINESS_LINE:
+            return None
         setter = match_roster_setter(setter_from_user_field(lead, user_map) or "")
         if setter:
             return setter
         return _scraper_for_lead(m["lead_id"]) or resolve_scraper_title(m.get("title"))
 
+    def _attribute_tlg_meeting(m):
+        """Count TLG meetings only when the lead belongs to the TLG offer."""
+        lead = scraper_leads.get(m["lead_id"]) or {}
+        if (lead.get(f"custom.{CF_BUSINESS_LINE}") or "").strip() != TLG_BUSINESS_LINE:
+            return None
+        raw_user = read_setter_user_value(lead)
+        if isinstance(raw_user, list):
+            raw_user = raw_user[0] if raw_user else None
+        if isinstance(raw_user, str) and raw_user in TLG_USER_IDS:
+            return TLG_USER_IDS[raw_user]
+        setter = match_tlg_setter(setter_from_user_field(lead, user_map) or "")
+        if setter:
+            return setter
+        setter = match_tlg_setter(lead.get(f"custom.{CF_REACT_SETTER}") or "")
+        return setter or resolve_tlg_title(m.get("title"))
+
     # Booked / Shown — per-meeting counting on today's scraper-booked meetings.
     for m in ns_meetings_today:
         setter = _attribute_meeting(m)
-        if not setter or setter not in scraper_stats:
-            continue
-        scraper_stats[setter]["booked"] += 1
         lead = scraper_leads.get(m["lead_id"]) or {}
-        if str(lead.get(f"custom.{CF_SHOW_UP}", "")).lower() == "yes":
-            scraper_stats[setter]["shown"] += 1
+        shown = str(lead.get(f"custom.{CF_SHOW_UP}", "")).lower() == "yes"
+        if setter in scraper_stats:
+            scraper_stats[setter]["booked"] += 1
+            if shown:
+                scraper_stats[setter]["shown"] += 1
+        tlg_setter = _attribute_tlg_meeting(m)
+        if tlg_setter in tlg_stats:
+            tlg_stats[tlg_setter]["booked"] += 1
+            if shown:
+                tlg_stats[tlg_setter]["shown"] += 1
 
     # Set — per-lead counting on scraper meetings created today (reschedule churn
     # counts once). Attribution: first title-mapped meeting for the lead wins;
@@ -3996,27 +4079,34 @@ def build_eod_data(rolling_data, today):
         _set_meetings_by_lead.setdefault(m["lead_id"], []).append(m)
     for lid in ns_set_lids:
         setter = None
+        tlg_setter = None
         for m in _set_meetings_by_lead.get(lid, []):
             setter = _attribute_meeting(m)
-            if setter:
+            tlg_setter = _attribute_tlg_meeting(m)
+            if setter or tlg_setter:
                 break
-        if not setter or setter not in scraper_set_today:
-            continue
-        scraper_set_today[setter] += 1
+        if setter in scraper_set_today:
+            scraper_set_today[setter] += 1
+        if tlg_setter in tlg_set_today:
+            tlg_set_today[tlg_setter] += 1
 
-    scraper_lines = []  # ordered per SCRAPER_SETTERS, always includes all setters
-    for close_name, display_name, goal in SCRAPER_SETTERS:
-        booked = scraper_stats[close_name]["booked"]
-        shown  = scraper_stats[close_name]["shown"]
-        rate   = (shown / booked * 100) if booked > 0 else None  # None → hide "· X% show"
-        scraper_lines.append({
-            "name":   display_name,
-            "goal":   goal,
-            "set":    scraper_set_today[close_name],
-            "booked": booked,
-            "shown":  shown,
-            "rate":   rate,  # float or None
-        })
+    def _roster_lines(roster, stats, set_today):
+        lines = []
+        for close_name, display_name, goal in roster:
+            booked = stats[close_name]["booked"]
+            shown = stats[close_name]["shown"]
+            lines.append({
+                "name": display_name,
+                "goal": goal,
+                "set": set_today[close_name],
+                "booked": booked,
+                "shown": shown,
+                "rate": shown / booked * 100 if booked else None,
+            })
+        return lines
+
+    scraper_lines = _roster_lines(EOD_VP_SETTERS, scraper_stats, scraper_set_today)
+    tlg_lines = _roster_lines(TLG_SETTERS, tlg_stats, tlg_set_today)
 
     # ── VendHub Calls by Rep ──────────────────────────────────────────────────
     # Two criteria, per user spec:
@@ -4145,6 +4235,7 @@ def build_eod_data(rolling_data, today):
         "lost_groups":         lost_groups,
         "rep_breakdown_today": rep_breakdown_today,  # [[name, new, fu_r, tot, is_clamped], ...]
         "scraper_lines":       scraper_lines,        # [{name, goal, booked, shown, rate}]
+        "tlg_lines":           tlg_lines,
         "vendhub_lines":       vendhub_lines,        # [(owner_name, count), ...]
         "lane2_closed_won_lines": lane2_closed_won_lines,
     }
@@ -4212,22 +4303,25 @@ def format_eod_email(data):
     else:
         lost_lines_plain = "* None"
 
-    # Scraper bookings plain — aligned as a fixed-width table for terminal-mail readability.
-    if data["scraper_lines"]:
+    # Setter bookings plain — aligned as a fixed-width table for terminal-mail readability.
+    def _roster_plain(lines):
+        if not lines:
+            return "* None"
         # Widest "Name (goal)" defines the name column so numbers align.
-        name_cells = [f"{s['name']} ({s['goal']})" for s in data["scraper_lines"]]
+        name_cells = [f"{s['name']} ({s['goal']})" for s in lines]
         name_w     = max(len(c) for c in name_cells)
-        scraper_lines_plain_parts = [
+        parts = [
             f"  {'Name':<{name_w}}   {'Set':>3}   {'For Today':>9}   {'Show':>5}"
         ]
-        for s, name_cell in zip(data["scraper_lines"], name_cells):
+        for s, name_cell in zip(lines, name_cells):
             rate_str = f"{s['rate']:.0f}%" if s["rate"] is not None else "—"
-            scraper_lines_plain_parts.append(
+            parts.append(
                 f"  {name_cell:<{name_w}}   {s['set']:>3}   {s['booked']:>9}   {rate_str:>5}"
             )
-        scraper_lines_plain = "\n".join(scraper_lines_plain_parts)
-    else:
-        scraper_lines_plain = "* None"
+        return "\n".join(parts)
+
+    scraper_lines_plain = _roster_plain(data["scraper_lines"])
+    tlg_lines_plain = _roster_plain(data["tlg_lines"])
 
     # VendHub calls plain — "Ryan Jones — 1 · 100% show"
     if data["vendhub_lines"]:
@@ -4284,7 +4378,8 @@ def format_eod_email(data):
         f"Show Rate:                 {data['show_rate']:.0f}%\n"
         f"Meetings Set for Tomorrow: {data['tomorrow_count']}\n\n"
         f"Today's calls by rep:\n{rep_breakdown_plain}\n\n"
-        f"Scraper bookings:\n{scraper_lines_plain}\n\n"
+        f"VP scraper bookings:\n{scraper_lines_plain}\n\n"
+        f"TLG setter bookings:\n{tlg_lines_plain}\n\n"
         f"VendHub calls:\n{vendhub_lines_plain}\n\n"
         f"Closed today from Lane 2:\n{lane2_closed_won_plain}\n\n"
         f"Closed won funnel / ICP:\n{icp_lines_plain}\n\n"
@@ -4380,25 +4475,29 @@ def format_eod_email(data):
         f'<td style="{_sh_header_td}width:60px;padding-right:0;">Show</td>'
         '</tr>'
     )
-    scraper_row_parts = [scraper_header]
-    for s in data["scraper_lines"]:
-        set_val    = s["set"]
-        booked_val = s["booked"]
-        set_color    = "#333" if set_val    > 0 else "#bbb"
-        booked_color = "#333" if booked_val > 0 else "#bbb"
-        show_display = f'{s["rate"]:.0f}%' if s["rate"] is not None else "—"
-        show_color   = "#333" if s["rate"] is not None else "#bbb"
-        scraper_row_parts.append(
-            '<tr>'
-            f'<td style="padding:6px 0;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;">'
-            f'{_esc(s["name"])} <span style="color:#888;">({s["goal"]})</span>'
-            f'</td>'
-            f'<td style="padding:6px 8px;border-bottom:1px solid #f5f5f5;color:{set_color};font-size:13px;font-weight:700;text-align:right;">{set_val}</td>'
-            f'<td style="padding:6px 8px;border-bottom:1px solid #f5f5f5;color:{booked_color};font-size:13px;font-weight:700;text-align:right;">{booked_val}</td>'
-            f'<td style="padding:6px 0;border-bottom:1px solid #f5f5f5;color:{show_color};font-size:13px;text-align:right;">{show_display}</td>'
-            '</tr>'
-        )
-    scraper_rows = "".join(scraper_row_parts)
+    def _roster_rows(lines):
+        parts = [scraper_header]
+        for s in lines:
+            set_val = s["set"]
+            booked_val = s["booked"]
+            set_color = "#333" if set_val > 0 else "#bbb"
+            booked_color = "#333" if booked_val > 0 else "#bbb"
+            show_display = f'{s["rate"]:.0f}%' if s["rate"] is not None else "—"
+            show_color = "#333" if s["rate"] is not None else "#bbb"
+            parts.append(
+                '<tr>'
+                f'<td style="padding:6px 0;border-bottom:1px solid #f5f5f5;color:#333;font-size:13px;">'
+                f'{_esc(s["name"])} <span style="color:#888;">({s["goal"]})</span>'
+                f'</td>'
+                f'<td style="padding:6px 8px;border-bottom:1px solid #f5f5f5;color:{set_color};font-size:13px;font-weight:700;text-align:right;">{set_val}</td>'
+                f'<td style="padding:6px 8px;border-bottom:1px solid #f5f5f5;color:{booked_color};font-size:13px;font-weight:700;text-align:right;">{booked_val}</td>'
+                f'<td style="padding:6px 0;border-bottom:1px solid #f5f5f5;color:{show_color};font-size:13px;text-align:right;">{show_display}</td>'
+                '</tr>'
+            )
+        return "".join(parts)
+
+    scraper_rows = _roster_rows(data["scraper_lines"])
+    tlg_rows = _roster_rows(data["tlg_lines"])
 
     # VendHub rows — "Name — count · X% show". Empty state shows "None".
     # Show rate appended in the same dimmed style used elsewhere in the email.
@@ -4516,11 +4615,22 @@ def format_eod_email(data):
         <!-- Divider -->
         <tr><td style="background:#ffffff;padding:0 28px;"><hr style="border:none;border-top:1px solid #ececec;margin:0;"></td></tr>
 
-        <!-- Scraper Bookings block -->
+        <!-- VP Scraper Bookings block -->
         <tr><td style="background:#ffffff;padding:20px 28px;">
-          <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#1b5e1b;border-left:3px solid #1b5e1b;padding-left:8px;">SCRAPER BOOKINGS <span style="color:#888;font-weight:500;letter-spacing:0.02em;text-transform:none;">— name (goal)</span></p>
+          <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#1b5e1b;border-left:3px solid #1b5e1b;padding-left:8px;">VP SCRAPER BOOKINGS <span style="color:#888;font-weight:500;letter-spacing:0.02em;text-transform:none;">— name (goal)</span></p>
           <table width="100%" cellpadding="0" cellspacing="0">
             {scraper_rows}
+          </table>
+        </td></tr>
+
+        <!-- Divider -->
+        <tr><td style="background:#ffffff;padding:0 28px;"><hr style="border:none;border-top:1px solid #ececec;margin:0;"></td></tr>
+
+        <!-- TLG Setter Bookings block -->
+        <tr><td style="background:#ffffff;padding:20px 28px;">
+          <p style="margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#1b5e1b;border-left:3px solid #1b5e1b;padding-left:8px;">TLG SETTER BOOKINGS <span style="color:#888;font-weight:500;letter-spacing:0.02em;text-transform:none;">— name (goal)</span></p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            {tlg_rows}
           </table>
         </td></tr>
 
