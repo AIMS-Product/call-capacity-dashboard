@@ -1361,9 +1361,9 @@ def build_day_detail(valid_meetings, booking_dates, lane_rep_names, meeting_titl
 
 def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_label="", rep_total_meetings=None, rep_meetings_by_category=None, scraper_meetings=None):
     """Build dashboard data from field-based lead query.
-    scraper_meetings: optional list from resolve_scraper_meetings(). When given, the
-        Reactivation Scrapers funnel is counted PER NEXT STEPS MEETING (by starts_at)
-        instead of by FSCBD — see the injection block after the lead loop. When None,
+    scraper_meetings: optional list from resolve_scraper_meetings(). When given,
+        Next Steps bookings are counted per meeting date. Pearl's Session title
+        goes to Instagram; the others go to Reactivation Scrapers. When None,
         legacy FSCBD counting applies to every funnel.
     field_leads: list of lead dicts from fetch_field_leads (or similar).
     lane_reps: set of user IDs to filter by (if None, no lane filter applied).
@@ -1388,6 +1388,11 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
     valid_meetings = []
     status_excluded = 0
     lane_excluded = 0
+    instagram_meeting_dates = {
+        (m["lead_id"], m["date"])
+        for m in (scraper_meetings or [])
+        if m.get("funnel") == map_funnel("Instagram")
+    }
 
     for lead in field_leads:
         # Exclude bad statuses
@@ -1428,6 +1433,11 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
         raw_funnel = (lead.get(FIELD_FUNNEL_NAME_DEAL) or "")
         funnel = map_funnel(raw_funnel)
 
+        # Pearl's title is counted from the meeting activity below. A matching
+        # first-date lead row on the same day is that same booking, not a second one.
+        if (lead.get("id"), field_date) in instagram_meeting_dates:
+            continue
+
         # Reactivation Scrapers is counted per Next Steps MEETING (injected below),
         # not per lead FSCBD — skip its leads here so they aren't double-counted.
         if scraper_meetings is not None and funnel == "Reactivation Scrapers":
@@ -1461,15 +1471,15 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
             "lead_owner": lead_owner,
         })
 
-    # ── Reactivation Scrapers: per-meeting injection (Option A, 2026-09-01) ──
-    # Each Next Steps meeting on a scraper-attributed lead counts as one booking
+    # ── Next Steps: per-meeting injection (Option A, 2026-09-01) ──
+    # Each attributed Next Steps meeting counts as one booking
     # on its starts_at day. The CEO/exec team expect the FULL re-scrape effort —
     # older leads put back on closer calendars — which FSCBD-only counting hid.
     # No lead-owner gate here: attribution is by SETTER, and these meetings sit on
     # closer calendars regardless of who owns the lead record. The lead-status
     # exclusions (Canceled by Lead / Outside US) still apply. rep_data (per-rep
     # breakdown) only credits owners in this lane, since that view is owner-based.
-    scraper_injected = 0
+    next_steps_injected = 0
     for sm in (scraper_meetings or []):
         d = sm["date"]
         if d not in daily_data:
@@ -1477,16 +1487,17 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
         if sm.get("status_id") in EXCLUDED_LEAD_STATUS_IDS:
             status_excluded += 1
             continue
-        funnel = "Reactivation Scrapers"
+        funnel = sm.get("funnel", "Reactivation Scrapers")
         daily_data[d]["booked"] += 1
         all_funnels_seen.add(funnel)
         daily_data[d]["funnels"][funnel] = daily_data[d]["funnels"].get(funnel, 0) + 1
         owner = sm.get("lead_owner") or ""
         if lane_reps and owner in rep_data:
             rep_data[owner][d][funnel] = rep_data[owner][d].get(funnel, 0) + 1
-        setter = sm["setter"]
-        setter_data.setdefault(setter, {dd: 0 for dd in dates})
-        setter_data[setter][d] = setter_data[setter].get(d, 0) + 1
+        if funnel == "Reactivation Scrapers":
+            setter = sm["setter"]
+            setter_data.setdefault(setter, {dd: 0 for dd in dates})
+            setter_data[setter][d] = setter_data[setter].get(d, 0) + 1
         valid_meetings.append({
             "date":       d,
             "title":      sm.get("display_name", ""),
@@ -1494,9 +1505,9 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
             "lead_id":    sm["lead_id"],
             "lead_owner": owner,
         })
-        scraper_injected += 1
+        next_steps_injected += 1
     if scraper_meetings is not None:
-        log(f"   🕸 Reactivation Scrapers counted per Next Steps meeting: {scraper_injected} in window")
+        log(f"   🕸 Next Steps bookings counted per meeting: {next_steps_injected} in window")
 
     if status_excluded > 0:
         log(f"   ⚠ Excluded {status_excluded} leads (status: Canceled/Outside US)")
@@ -3032,6 +3043,14 @@ TLG_TITLE_MAP = {
 # guarantees every setter link title carries that phrase; the specific titles in
 # the methodology doc were examples, not an allowlist. Case-insensitive substring.
 NEXT_STEPS_PHRASE = "next steps"
+INSTAGRAM_NEXT_STEPS_TITLE = re.compile(
+    r"^vendingpren[eu]+rs?\s+next\s+steps\s+session\b", re.IGNORECASE
+)
+
+
+def is_instagram_next_steps_title(title):
+    """Pearl's Instagram booking link, including Calendly attendee suffixes."""
+    return bool(INSTAGRAM_NEXT_STEPS_TITLE.search((title or "").strip()))
 
 
 def _norm_name(name):
@@ -3525,13 +3544,13 @@ def fetch_meetings_starting_today(today):
 
 
 def resolve_scraper_meetings(meetings, lead_index):
-    """Turn raw meeting records into Reactivation Scrapers booking records.
+    """Turn raw Next Steps meetings into funnel booking records.
 
     Methodology (reactivation-scrapers-booked-meetings-methodology doc + Stephen
-    2026-09-01, Option A): for the Reactivation Scrapers funnel ONLY, a booking
-    is a MEETING whose title contains "Next Steps", bucketed by starts_at PT —
-    NOT the lead's First Sales Call Booked Date. Re-scraped older leads landing
-    back on a closer's calendar count every time; FSCBD-only counting hid that.
+    2026-09-01, Option A): a booking is a MEETING whose title contains "Next
+    Steps", bucketed by starts_at PT. Pearl's Session title belongs to
+    Instagram; other attributed Next Steps meetings belong to Reactivation
+    Scrapers. Re-scraped older leads count each time.
 
     Attribution: SCRAPER_TITLE_MAP by unique title first; otherwise the lead's
     Reactivation - Setter Name field + Reactivation Scrapers funnel. Meetings that
@@ -3540,7 +3559,8 @@ def resolve_scraper_meetings(meetings, lead_index):
 
     lead_index: {lead_id: lead dict} for leads already fetched (field_leads).
     Leads not in it are fetched with a small field set into a dedicated cache.
-    Returns list of {date, lead_id, setter, lead_owner, status_id, display_name}.
+    Returns records with date, funnel, title, lead_id, setter, lead_owner,
+    status_id, and display_name.
     """
     ns = [m for m in meetings if is_next_steps_title(m.get("title"))]
     if not ns:
@@ -3602,6 +3622,8 @@ def resolve_scraper_meetings(meetings, lead_index):
             continue
         records.append({
             "date":         m["meeting_date"],
+            "funnel":       map_funnel("Instagram") if is_instagram_next_steps_title(m.get("title")) else "Reactivation Scrapers",
+            "title":        m.get("title") or "",
             "lead_id":      m["lead_id"],
             "setter":       setter,
             "lead_owner":   (lead.get(FIELD_LEAD_OWNER) or "").strip(),
