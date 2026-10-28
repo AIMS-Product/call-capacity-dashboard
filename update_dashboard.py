@@ -56,6 +56,9 @@ def calendly_get(endpoint, params=None):
     resp = requests.get(url, headers={
         "Authorization": f"Bearer {CALENDLY_API_KEY}",
         "Content-Type": "application/json",
+        # Calendly's edge can block the default python-requests agent (403/1010).
+        # Use the browser-style User-Agent verified by the read-only live check.
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
     }, params=params, timeout=15)
     resp.raise_for_status()
     return resp.json()
