@@ -45,7 +45,7 @@ CALENDLY_API_KEY = os.environ.get("CALENDLY_API_KEY", "")
 CALENDLY_API_BASE = "https://api.calendly.com"
 CAPACITY_CACHE_FILE = "capacity_cache.json"
 CALENDLY_SLOT_DIAGNOSTICS = {
-    "api_key_configured": bool(CALENDLY_API_KEY),
+    "api_key_configured": bool(CALENDLY_API_KEY.strip()),
     "checked_at_utc": None,
     "dates": {},
 }
@@ -60,7 +60,7 @@ CALENDLY_ACCELERATOR_URI = "https://api.calendly.com/event_types/f1a11c05-d0c0-4
 def calendly_get(endpoint, params=None):
     url = endpoint if endpoint.startswith("http") else f"{CALENDLY_API_BASE}{endpoint}"
     resp = requests.get(url, headers={
-        "Authorization": f"Bearer {CALENDLY_API_KEY}",
+        "Authorization": f"Bearer {CALENDLY_API_KEY.strip()}",
         "Content-Type": "application/json",
         # Calendly's edge can block the default python-requests agent (403/1010).
         # Use the browser-style User-Agent verified by the read-only live check.
@@ -83,12 +83,14 @@ def calendly_error_diagnostic(error):
         body = re.sub(r"<[^>]*>", " ", body)
         body = re.sub(r"\s+", " ", body).strip()
         if body:
+            body = re.sub(r"(?i)Bearer\s+[^\s'\"]+", "Bearer [redacted]", body)
+            body = re.sub(r"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b", "[redacted-token]", body)
             diagnostic["detail"] = html.unescape(body)[:240]
     if "detail" not in diagnostic and status_code is None:
-        error_text = str(error)
-        if CALENDLY_API_KEY:
-            error_text = error_text.replace(CALENDLY_API_KEY, "[redacted]")
-        diagnostic["detail"] = error_text[:240]
+        if isinstance(error, requests.exceptions.InvalidHeader):
+            diagnostic["detail"] = "Invalid Authorization header value; check CALENDLY_API_KEY formatting. Header value omitted."
+        else:
+            diagnostic["detail"] = f"Client-side request error: {type(error).__name__}. Error text omitted."
     return diagnostic
 
 
@@ -121,9 +123,9 @@ def fetch_calendly_available_slots(dates):
     Returns: {date_obj: int} — available slot count per day.
     """
     CALENDLY_SLOT_DIAGNOSTICS["checked_at_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    CALENDLY_SLOT_DIAGNOSTICS["api_key_configured"] = bool(CALENDLY_API_KEY)
+    CALENDLY_SLOT_DIAGNOSTICS["api_key_configured"] = bool(CALENDLY_API_KEY.strip())
     CALENDLY_SLOT_DIAGNOSTICS["dates"] = {}
-    if not CALENDLY_API_KEY:
+    if not CALENDLY_API_KEY.strip():
         CALENDLY_SLOT_DIAGNOSTICS["status"] = "missing_api_key"
         log("   ⚠ CALENDLY_API_KEY not set — skipping Calendly")
         return {}
