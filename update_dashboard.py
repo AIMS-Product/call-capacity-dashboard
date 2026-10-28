@@ -17,6 +17,7 @@ import json
 import re
 import time
 import calendar
+import html
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -43,6 +44,11 @@ def get_capacity(d):
 CALENDLY_API_KEY = os.environ.get("CALENDLY_API_KEY", "")
 CALENDLY_API_BASE = "https://api.calendly.com"
 CAPACITY_CACHE_FILE = "capacity_cache.json"
+CALENDLY_SLOT_DIAGNOSTICS = {
+    "api_key_configured": bool(CALENDLY_API_KEY),
+    "checked_at_utc": None,
+    "dates": {},
+}
 
 # Team calendar URIs — Consultation has 2-3 day window, Accelerator has 5-day window
 # They share rep availability, so we query Consultation first and only use
@@ -64,6 +70,43 @@ def calendly_get(endpoint, params=None):
     return resp.json()
 
 
+def calendly_error_diagnostic(error):
+    """Return safe, concise HTTP diagnostics without exposing request headers."""
+    response = getattr(error, "response", None)
+    status_code = getattr(response, "status_code", None)
+    diagnostic = {"status": "error", "http_status": status_code}
+    if response is not None:
+        cf_ray = response.headers.get("cf-ray")
+        if cf_ray:
+            diagnostic["cf_ray"] = cf_ray
+        body = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", response.text or "")
+        body = re.sub(r"<[^>]*>", " ", body)
+        body = re.sub(r"\s+", " ", body).strip()
+        if body:
+            diagnostic["detail"] = html.unescape(body)[:240]
+    if "detail" not in diagnostic and status_code is None:
+        error_text = str(error)
+        if CALENDLY_API_KEY:
+            error_text = error_text.replace(CALENDLY_API_KEY, "[redacted]")
+        diagnostic["detail"] = error_text[:240]
+    return diagnostic
+
+
+def fetch_calendly_time_count(event_uri, start, end):
+    """Fetch one event type and return its count plus a page-safe diagnostic."""
+    try:
+        data = calendly_get(
+            f"{CALENDLY_API_BASE}/event_type_available_times",
+            {"event_type": event_uri, "start_time": start, "end_time": end}
+        )
+        count = len(data.get("collection", []))
+        return count, {"status": "ok", "http_status": 200, "slots": count}
+    except Exception as error:
+        diagnostic = calendly_error_diagnostic(error)
+        diagnostic["slots"] = 0
+        return 0, diagnostic
+
+
 def fetch_calendly_available_slots(dates):
     """Fetch available time slots from Calendly team calendars per day.
     Uses Consultation calendar first (2-3 day window). For days where
@@ -77,9 +120,14 @@ def fetch_calendly_available_slots(dates):
 
     Returns: {date_obj: int} — available slot count per day.
     """
+    CALENDLY_SLOT_DIAGNOSTICS["checked_at_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    CALENDLY_SLOT_DIAGNOSTICS["api_key_configured"] = bool(CALENDLY_API_KEY)
+    CALENDLY_SLOT_DIAGNOSTICS["dates"] = {}
     if not CALENDLY_API_KEY:
+        CALENDLY_SLOT_DIAGNOSTICS["status"] = "missing_api_key"
         log("   ⚠ CALENDLY_API_KEY not set — skipping Calendly")
         return {}
+    CALENDLY_SLOT_DIAGNOSTICS["status"] = "running"
 
     log("📅 Fetching Calendly available slots (team calendars)...")
     now_utc = datetime.now(timezone.utc)
@@ -99,6 +147,7 @@ def fetch_calendly_available_slots(dates):
         # If PT day has fully ended → skip (no future slots possible)
         if now_utc >= day_end_utc:
             result[d] = 0
+            CALENDLY_SLOT_DIAGNOSTICS["dates"][d.isoformat()] = {"status": "day_ended", "slots": 0}
             log(f"   {d.strftime('%a %m/%d')}: PT day already ended → 0")
             continue
         start_dt = max(day_start_utc, now_utc + timedelta(minutes=1))
@@ -108,48 +157,49 @@ def fetch_calendly_available_slots(dates):
         is_today = d == today_pacific
 
         # Try Consultation first
-        consult_count = 0
-        consult_error = None
-        try:
-            data = calendly_get(
-                f"{CALENDLY_API_BASE}/event_type_available_times",
-                {"event_type": CALENDLY_CONSULTATION_URI, "start_time": start, "end_time": end}
-            )
-            consult_count = len(data.get("collection", []))
-        except Exception as e:
-            consult_error = str(e)[:200]
+        date_diagnostic = {"start_utc": start, "end_utc": end}
+        consult_count, date_diagnostic["consultation"] = fetch_calendly_time_count(
+            CALENDLY_CONSULTATION_URI, start, end
+        )
 
         if consult_count > 0:
             result[d] = consult_count
+            date_diagnostic["accelerator"] = {"status": "not_queried", "reason": "consultation_has_slots"}
+            date_diagnostic["status"] = "slots_found"
+            date_diagnostic["slots"] = consult_count
+            CALENDLY_SLOT_DIAGNOSTICS["dates"][d.isoformat()] = date_diagnostic
             log(f"   {d.strftime('%a %m/%d')}{' (TODAY)' if is_today else ''}: {consult_count} slots (Consultation)")
             continue
 
         # Consultation returned 0 — try Accelerator
-        accel_count = 0
-        accel_error = None
-        try:
-            data = calendly_get(
-                f"{CALENDLY_API_BASE}/event_type_available_times",
-                {"event_type": CALENDLY_ACCELERATOR_URI, "start_time": start, "end_time": end}
-            )
-            accel_count = len(data.get("collection", []))
-        except Exception as e:
-            accel_error = str(e)[:200]
+        accel_count, date_diagnostic["accelerator"] = fetch_calendly_time_count(
+            CALENDLY_ACCELERATOR_URI, start, end
+        )
 
         if accel_count > 0:
             result[d] = accel_count
+            date_diagnostic["status"] = "slots_found"
+            date_diagnostic["slots"] = accel_count
             log(f"   {d.strftime('%a %m/%d')}{' (TODAY)' if is_today else ''}: {accel_count} slots (Accelerator fallback)")
         else:
             result[d] = 0
-            # Always surface errors — silent swallowing here is what hid this exact bug
-            err_parts = []
-            if consult_error: err_parts.append(f"Consult ERR: {consult_error}")
-            if accel_error:   err_parts.append(f"Accel ERR: {accel_error}")
+            date_diagnostic["status"] = "zero_or_request_error"
+            date_diagnostic["slots"] = 0
+            CALENDLY_SLOT_DIAGNOSTICS["dates"][d.isoformat()] = date_diagnostic
+            err_parts = [
+                f"Consult ERR: {date_diagnostic['consultation'].get('http_status') or date_diagnostic['consultation'].get('detail')}"
+                for _ in [0] if date_diagnostic["consultation"]["status"] == "error"
+            ]
+            if date_diagnostic["accelerator"]["status"] == "error":
+                err_parts.append(f"Accel ERR: {date_diagnostic['accelerator'].get('http_status') or date_diagnostic['accelerator'].get('detail')}")
             err_suffix = (" — " + " | ".join(err_parts)) if err_parts else ""
             log(f"   {d.strftime('%a %m/%d')}{' (TODAY)' if is_today else ''}: 0 slots (no availability){err_suffix}")
 
+        CALENDLY_SLOT_DIAGNOSTICS["dates"][d.isoformat()] = date_diagnostic
+
     if not result:
         log("   ⚠ No available slots found (may be outside scheduling window)")
+    CALENDLY_SLOT_DIAGNOSTICS["status"] = "complete"
     return result
 
 
@@ -2076,6 +2126,9 @@ def generate_rolling_html(team_data, team_detail=None):
     now_pacific = datetime.now(PACIFIC)
     last_updated = now_pacific.strftime("%I:%M %p %Z")
     last_updated_date = now_pacific.strftime("%A, %B %-d, %Y")
+    calendly_diagnostics_attr = html.escape(
+        json.dumps(CALENDLY_SLOT_DIAGNOSTICS, sort_keys=True), quote=True
+    )
 
     year, month = now_pacific.year, now_pacific.month
     daily_goal_map = {}
@@ -2553,7 +2606,29 @@ def generate_rolling_html(team_data, team_detail=None):
       <a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a>
     </span>
   </div>
+
+  <div class="card" style="margin-top:0.75rem;">
+    <details id="calendly-diagnostics" data-diagnostics="{calendly_diagnostics_attr}">
+      <summary style="cursor:pointer;font-weight:600;">Calendly availability diagnostics</summary>
+      <p style="color:#666;font-size:0.85rem;">Request status and slot counts from the last dashboard refresh. No credentials are included.</p>
+      <pre id="calendly-diagnostics-output" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:0.75rem;max-height:24rem;overflow:auto;"></pre>
+    </details>
+  </div>
 </div>
+
+<script>
+(function () {{
+  var panel = document.getElementById('calendly-diagnostics');
+  var output = document.getElementById('calendly-diagnostics-output');
+  if (panel && output) {{
+    try {{
+      output.textContent = JSON.stringify(JSON.parse(panel.dataset.diagnostics || '{{}}'), null, 2);
+    }} catch (error) {{
+      output.textContent = 'Unable to read Calendly diagnostics: ' + error.message;
+    }}
+  }}
+}})();
+</script>
 
 <!-- Day Detail Panel -->
 <div id="dayOverlay" class="day-panel-overlay" onclick="closeDayPanel()"></div>
