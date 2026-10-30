@@ -43,6 +43,7 @@ LOOKAHEAD_DAYS = 14          # how far forward to scan for duplicate upcoming me
 KEEP_POLICY = "earliest"     # keep earliest booked, flag later ones (team decision)
 AUTO_CANCEL = False          # v1 = notify only. True => cancel flagged bookings via API
 SEND_ALL_CLEAR = False       # if True, email even when no duplicates are found
+ALERT_EMAILS_ENABLED = False # mute duplicate-booking notifications while retaining the sweep
 
 # Which secret holds the alert recipient(s). Kept SEPARATE from the dashboard's
 # EOD distro on purpose: TEST_EMAIL_TO = just you. Switch to "EMAIL_TO" (the EOD
@@ -403,6 +404,10 @@ def render_email(clusters):
 
 
 def send_email(subject, html_body):
+    if not ALERT_EMAILS_ENABLED:
+        log("Alert email suppressed (ALERT_EMAILS_ENABLED=False).")
+        return
+
     email_from = env("EMAIL_FROM")
     email_to_raw = env(RECIPIENT_SECRET)  # TEST_EMAIL_TO while testing; NOT the EOD distro
     app_pw = env("GMAIL_APP_PASSWORD")
