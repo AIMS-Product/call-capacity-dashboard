@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Capacity Dashboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: 'Inter', -apple-system, system-ui, sans-serif; background: #ffffff; color: #1a1a1a; }
+.header { background: #1b2e1b; color: #fff; padding: 0.8rem 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 1.15rem; font-weight: 700; }
+.header .sub { font-size: 0.68rem; color: #a3c4a3; margin-top: 2px; }
+.header .right { text-align: right; font-family: 'JetBrains Mono', monospace; }
+.header .right .date { font-size: 0.78rem; font-weight: 600; }
+.header .right .time { font-size: 0.65rem; color: #a3c4a3; }
+.dot { display: inline-block; width: 7px; height: 7px; background: #4ade80; border-radius: 50%; margin-right: 5px; }
+.wrap { padding: 1rem 1.5rem 2rem; max-width: 1500px; margin: 0 auto; }
+th.sec-label { color: #1b5e1b; font-size: 0.6rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; background: #f8faf8; border-left: 3px solid #1b5e1b; }
+/* Compact modifier — applied to longer labels (e.g. UNCATEGORIZED) so they fit
+   in the 200px first column without forcing the other labels smaller too. */
+th.sec-label.is-compact { font-size: 0.52rem; letter-spacing: 0.05em; }
+.card { border: 1px solid #d4d4d4; border-radius: 4px; overflow-x: auto; margin-bottom: 1rem; background: #fff; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th { padding: 0.5rem 0.6rem; font-size: 0.68rem; font-weight: 700; text-align: center; color: #555; border-bottom: 2px solid #d4d4d4; white-space: nowrap; background: #fafafa; line-height: 1.4; }
+th:first-child { text-align: left; padding-left: 0.6rem; }
+td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #ececec; font-size: 0.78rem; }
+td.num { text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; font-weight: 500; color: #333; }
+td.label { font-weight: 500; font-size: 0.76rem; padding-left: 0.6rem; color: #1a1a1a; }
+.metric { font-weight: 600; font-size: 0.78rem; padding-left: 0.6rem; color: #1a1a1a; }
+th.col-date.today { background: #fdf3e0 !important; color: #b45309; }
+td.today { background: #fdf8ee !important; }
+th.col-date.past { background: #f5f5f5 !important; color: #999; }
+td.past { background: #fafafa !important; }
+.booked { color: #1b7a2e; font-weight: 700; }
+.zero { color: #ccc; font-weight: 400; }
+.has-count { color: #1b7a2e; font-weight: 700; }
+.total-num { font-weight: 700; color: #1a1a1a; }
+.util-low { color: #16a34a; font-weight: 700; }
+.util-mid { color: #b45309; font-weight: 700; }
+.util-high { color: #dc2626; font-weight: 700; }
+td.tgt-red   { color: #dc2626; font-weight: 700; }
+td.tgt-amber { color: #b45309; font-weight: 700; }
+td.tgt-green { color: #16a34a; font-weight: 700; }
+tr.total-row td { border-top: 2px solid #bbb; }
+tr.section-divider td { border-top: 2px solid #d4d4d4; padding: 0; height: 0; }
+tr.section-label-row td { font-size: 0.62rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.5rem 0.6rem 0.25rem; border-bottom: 1px solid #d4d4d4; }
+tr.section-label-row.sec-ext td { color: #1b5e1b; background: #f8faf8; border-top: none; }
+tr.section-label-row.sec-inh td { color: #5e4b1b; background: #fdf8f0; border-top: 2px solid #d4d4d4; }
+tr.section-label-row.sec-unc td { color: #666; background: #f5f5f5; border-top: 2px solid #d4d4d4; }
+.footer { margin-top: 1.5rem; padding-top: 0.75rem; border-top: 1px solid #e0e0e0; font-size: 0.72rem; color: #888; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.footer a { color: #1b7a2e; text-decoration: none; font-weight: 600; }
+.footer a:hover { text-decoration: underline; }
+.excluded-section { margin-top: 0.5rem; }
+.excluded-section summary { font-size: 0.72rem; font-weight: 600; color: #666; cursor: pointer; padding: 0.4rem 0; }
+.excluded-section .exc-table { margin-top: 0.3rem; }
+.excluded-section .exc-table td { font-size: 0.7rem; color: #666; padding: 0.2rem 0.6rem; }
+.summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
+.s-card { background: #f8faf8; border: 1px solid #d4d4d4; border-radius: 6px; padding: 1rem; }
+.s-card .s-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #666; margin-bottom: 0.3rem; }
+.s-card .s-value { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 700; }
+.s-card .s-value.green { color: #1b7a2e; }
+.sec-ltf { color: #1b3a5e; border-left-color: #2563eb; background: #f0f4ff; }
+tr.section-label-row.sec-ltf td { color: #1b3a5e; background: #f0f4ff; border-top: 2px solid #d4d4d4; }
+.ltf-closer { color: #1b7a2e; font-weight: 600; }
+.ltf-setter { color: #2563eb; font-weight: 600; }
+.ltf-total { color: #1a1a1a; font-weight: 700; }
+.ltf-pct { color: #666; font-weight: 500; font-size: 0.7rem; }
+.ltf-collapsible { margin-bottom: 1rem; }
+.ltf-collapsible summary { font-size: 0.72rem; font-weight: 600; color: #1b5e1b; cursor: pointer; padding: 0.5rem 0.6rem; background: #f8faf8; border: 1px solid #d4d4d4; border-left: 3px solid #1b5e1b; border-radius: 4px; }
+.ltf-collapsible summary:hover { background: #eef5ee; }
+.ltf-collapsible details[open] summary { border-radius: 4px 4px 0 0; border-bottom: none; }
+.ltf-collapsible details[open] .card { margin-top: 0 !important; border-top: none; border-radius: 0 0 4px 4px; }
+@media (max-width: 900px) { .header { padding: 0.6rem 0.75rem; } .wrap { padding: 0.5rem 0.75rem; } .summary-cards { grid-template-columns: 1fr; } }
+
+
+    .new-changes-alert { display:flex; align-items:center; gap:8px; background:#1b2e1b; color:#fff;
+                         padding:6px 16px; font-size:0.72rem; cursor:pointer; margin:-0.5rem 0 0; }
+    .new-changes-alert:hover { background:#243d24; }
+    .alert-text { opacity:0.9; }
+    @keyframes pulse { 0%, 100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
+    .pulse-dot { width:10px; height:10px; border-radius:50%; background:#4ade80; display:inline-block;
+                 animation: pulse 1.5s ease-in-out infinite; flex-shrink:0; }
+    
+
+    .day-clickable { cursor:pointer; transition:background 0.15s, transform 0.1s; position:relative; }
+    .day-clickable:hover { background:rgba(27,122,46,0.08); border-radius:4px; }
+    .day-clickable:active { transform:scale(0.97); }
+    .funnel-expandable { cursor:pointer; transition:background 0.15s; }
+    .funnel-expandable:hover { background:rgba(27,122,46,0.05); }
+    .funnel-expandable .chevron { display:inline-block; font-size:0.65rem; color:#888; margin-right:4px; transition:transform 0.15s; }
+    .setter-row td.label { font-style:italic; }
+    .day-panel-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.3); z-index:998; }
+    .day-panel { display:none; position:fixed; top:0; right:0; width:380px; height:100%; background:#fff; box-shadow:-4px 0 20px rgba(0,0,0,0.15);
+                 z-index:999; overflow-y:auto; padding:1.5rem; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+    .day-panel .dp-close { position:absolute; top:12px; right:16px; font-size:1.2rem; cursor:pointer; color:#888; background:none; border:none; }
+    .day-panel .dp-close:hover { color:#333; }
+    .day-panel .dp-title { font-size:1.1rem; font-weight:700; margin-bottom:0.2rem; }
+    .day-panel .dp-subtitle { font-size:0.75rem; color:#888; margin-bottom:1.2rem; }
+    .day-panel .dp-section { font-size:0.7rem; font-weight:700; color:#1b7a2e; text-transform:uppercase; letter-spacing:0.5px; margin:1.2rem 0 0.5rem; }
+    .day-panel .dp-bar-row { display:flex; align-items:center; margin-bottom:0.4rem; font-size:0.78rem; }
+    .day-panel .dp-bar-label { width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .day-panel .dp-bar-track { flex:1; height:16px; background:#f0f0f0; border-radius:3px; margin:0 8px; overflow:hidden; }
+    .day-panel .dp-bar-fill { height:100%; background:#1b7a2e; border-radius:3px; transition:width 0.3s; }
+    .day-panel .dp-bar-val { width:55px; text-align:right; font-weight:600; font-size:0.72rem; color:#555; }
+    .day-panel .dp-rep-header { display:flex; align-items:center; padding:2px 0 6px; border-bottom:1px solid #eee;
+                                 font-size:0.58rem; font-weight:700; color:#888; letter-spacing:0.06em;
+                                 text-transform:uppercase; }
+    .day-panel .dp-rep-header-name { flex:1; }
+    .day-panel .dp-rep-header-col  { width:42px; text-align:right; }
+    .day-panel .dp-rep-row { display:flex; align-items:center; padding:4px 0; font-size:0.78rem; border-bottom:1px solid #f5f5f5; }
+    .day-panel .dp-rep-row:last-child { border-bottom:none; }
+    .day-panel .dp-rep-name { flex:1; color:#333; }
+    .day-panel .dp-rep-num  { width:42px; text-align:right; color:#333; font-variant-numeric:tabular-nums; }
+    .day-panel .dp-rep-num.is-new { font-weight:700; color:#1b7a2e; }
+    .day-panel .dp-rep-num.is-zero { color:#bbb; }
+    .day-panel .dp-rep-num.is-clamped { color:#999; cursor:help; }
+    .day-panel .dp-booked-table { width:100%; font-size:0.78rem; border-collapse:collapse; }
+    .day-panel .dp-booked-table td { padding:4px 6px; border-bottom:1px solid #f0f0f0; }
+    .day-panel .dp-booked-table td:first-child { font-weight:600; }
+    .day-panel .dp-booked-table td:last-child { text-align:right; color:#888; }
+    .day-panel .dp-coming-soon { color:#aaa; font-size:0.78rem; font-style:italic; padding:0.5rem 0; }
+
+    /* ── F/U & Reschedule Details (collapsible) ─────────────────────────── */
+    .day-panel .dp-section-collapsible { cursor:pointer; user-select:none; display:flex;
+                                          align-items:center; gap:6px; }
+    .day-panel .dp-section-collapsible:hover { color:#155e1e; }
+    .day-panel .dp-chevron { font-size:0.6rem; transition:transform 0.15s; }
+    .day-panel .dp-section-count { color:#888; font-weight:600; font-size:0.65rem; letter-spacing:normal;
+                                   text-transform:none; margin-left:auto; }
+    .day-panel .dp-nonnew-list { padding:0.25rem 0 0.5rem; }
+    .day-panel .dp-nonnew-row { padding:6px 0; font-size:0.75rem; line-height:1.4; border-bottom:1px solid #f5f5f5;
+                                display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+    .day-panel .dp-nonnew-row:last-child { border-bottom:none; }
+    .day-panel .dp-cat-pill { display:inline-block; font-size:0.6rem; font-weight:700; padding:2px 6px;
+                              border-radius:3px; text-transform:uppercase; letter-spacing:0.04em;
+                              min-width:42px; text-align:center; }
+    .day-panel .dp-cat-fu    { background:#e6f3ec; color:#1b7a2e; }
+    .day-panel .dp-cat-resch { background:#fff4e0; color:#a76200; }
+    .day-panel .dp-lead-link { color:#1b5e1b; text-decoration:underline; font-weight:600; }
+    .day-panel .dp-lead-link:hover { color:#0f3d10; }
+    .day-panel .dp-nonnew-sep { color:#ccc; margin:0 2px; }
+    .day-panel .dp-nonnew-meta { color:#666; }
+
+    /* ── Hero Card Row (Phase 2) ─────────────────────────────────────────── */
+    .hero-card-row { display:flex; align-items:stretch; gap:14px; padding:18px 14px !important;
+                     background:#fafafa; position:relative; }
+    .hero-arrow { background:#fff; border:2px solid #1b7a2e; color:#1b7a2e; width:36px; height:36px;
+                  border-radius:50%; font-size:1.4rem; font-weight:800; cursor:pointer; align-self:center;
+                  display:flex; align-items:center; justify-content:center; line-height:1; padding:0;
+                  flex-shrink:0; transition:all 0.15s; }
+    .hero-arrow:hover:not(:disabled) { background:#1b7a2e; color:#fff; transform:scale(1.08); }
+    .hero-arrow:disabled { opacity:0.25; cursor:not-allowed; }
+    .hero-slot { flex:1; min-height:240px; transition:opacity 0.15s; }
+    .hero-slot-prev, .hero-slot-next { flex:0.7; opacity:0.75; cursor:pointer; }
+    .hero-slot-prev:hover, .hero-slot-next:hover { opacity:1; }
+    .hero-slot-current { cursor:pointer; }
+    .hero-slot:empty { visibility:hidden; }
+
+    .hero-card { background:#fff; border:1px solid #e5e5e5; border-radius:8px; padding:14px 16px;
+                 height:100%; display:flex; flex-direction:column; box-sizing:border-box;
+                 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+                 transition:transform 0.1s, box-shadow 0.15s; }
+    .hero-slot-current .hero-card { border:2px solid #1b7a2e; box-shadow:0 4px 16px rgba(27,122,46,0.1);
+                                    padding:18px 22px; }
+    .hero-slot-prev .hero-card, .hero-slot-next .hero-card { padding:12px 14px; }
+    .hero-slot-current .hero-card:hover { box-shadow:0 6px 20px rgba(27,122,46,0.18); transform:translateY(-1px); }
+    .hero-slot-prev .hero-card:hover, .hero-slot-next .hero-card:hover {
+        border-color:#1b7a2e; box-shadow:0 2px 8px rgba(27,122,46,0.12); }
+
+    .hero-card.is-today { border-color:#1b7a2e; }
+    .hero-card.is-past  { background:#fafafa; }
+
+    .hc-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; gap:12px; }
+    .hc-header-text { display:flex; flex-direction:column; }
+    .hc-day-label { font-size:0.7rem; color:#888; font-weight:700; text-transform:uppercase;
+                    letter-spacing:0.05em; line-height:1.1; }
+    .hero-slot-current .hc-day-label { font-size:0.78rem; color:#1b7a2e; }
+    .hc-title { font-size:0.85rem; font-weight:700; color:#333; margin-top:2px; line-height:1.15; }
+    .hero-slot-current .hc-title { font-size:1rem; }
+    .hc-headline { font-size:2rem; font-weight:800; color:#1b7a2e; line-height:0.9; }
+    .hero-slot-current .hc-headline { font-size:2.6rem; }
+    /* Side cards: smaller headline. Shift it down so it visually aligns with the
+       "New Meetings Booked" title line rather than sitting up next to the day label. */
+    .hero-slot-prev .hc-headline, .hero-slot-next .hc-headline { font-size:1.6rem; margin-top:14px; }
+
+    .hc-sep { border:none; border-top:1px solid #e5e5e5; margin:6px 0 10px; }
+
+    .hc-section { margin-bottom:8px; }
+    /* Slight gap between Total breakdown and Open Calendar Slots — just enough
+       to feel like distinct sections without leaving an awkward dead zone. */
+    .hc-section + .hc-section { margin-top:4px; }
+    .hc-row { display:flex; justify-content:space-between; align-items:baseline; padding:2px 0;
+              font-size:0.82rem; }
+    .hero-slot-current .hc-row { font-size:0.92rem; }
+    .hc-row-label { color:#444; }
+    .hc-row-value { font-weight:700; color:#1a1a1a; font-variant-numeric:tabular-nums; }
+    .hc-row-parent { font-weight:600; }
+    .hc-row-parent .hc-row-value { color:#1a1a1a; }
+    .hc-row-child { padding-left:16px; color:#666; font-size:0.78rem; }
+    .hero-slot-current .hc-row-child { font-size:0.84rem; }
+    .hc-row-child .hc-row-value { color:#666; font-weight:600; }
+    .hc-row-missed .hc-row-value { color:#c0392b; }
+    /* Total-summary row at the bottom of the breakdown — sits under F/U / Resch / Other.
+       Separator line BELOW the Total row (between Total and Open Calendar Slots). */
+    .hc-row-total { font-weight:700; margin-top:4px; padding-bottom:6px; border-bottom:1px solid #e5e5e5; }
+    .hc-row-total .hc-row-label { color:#1a1a1a; }
+
+    .hc-footer { margin-top:auto; padding-top:10px; border-top:1px solid #e5e5e5;
+                 display:flex; justify-content:space-between; align-items:baseline; }
+    .hc-footer-label { font-size:0.75rem; font-weight:700; color:#555;
+                       text-transform:uppercase; letter-spacing:0.04em; }
+    .hero-slot-current .hc-footer-label { font-size:0.82rem; }
+    .hc-footer-value { font-size:1.4rem; font-weight:800; font-variant-numeric:tabular-nums; }
+    .hero-slot-current .hc-footer-value { font-size:1.8rem; }
+    .hc-footer-value.tgt-red    { color:#c0392b; }
+    .hc-footer-value.tgt-amber  { color:#d4860c; }
+    .hc-footer-value.tgt-green  { color:#1b7a2e; }
+    .hc-footer-value.tgt-na     { color:#999; }
+    
+</style>
+</head><body>
+<div class="header">
+  <div><h1>📞 Call Capacity Dashboard</h1><div class="sub">4-Day Trailing + 10-Day Lookahead · First Meetings Only · 22 working days in October</div></div>
+  <div class="right"><div class="date"><span class="dot"></span>Saturday, October 31, 2026</div><div class="time">Last updated: 12:10 AM PDT · <a href="changelog.html" style="color:#fff;opacity:0.7;text-decoration:none;font-weight:400;">📋 Changelog</a></div></div>
+</div>
+
+<div class="wrap">
+
+  <div id="team">
+  
+  <div class="card hero-card-row" data-card-data='{"2026-10-27": {"date": "2026-10-27", "weekday_short": "Tue", "month_day": "10/27", "is_today": false, "is_past": true, "is_future": false, "new_meetings": 21, "total_meetings": 33, "fu": 8, "resch": 4, "open_slots": null, "missed": 8, "target": 42, "target_pct": 50.0, "target_class": "tgt-red"}, "2026-10-28": {"date": "2026-10-28", "weekday_short": "Wed", "month_day": "10/28", "is_today": false, "is_past": true, "is_future": false, "new_meetings": 20, "total_meetings": 36, "fu": 13, "resch": 3, "open_slots": null, "missed": 0, "target": 42, "target_pct": 47.61904761904761, "target_class": "tgt-red"}, "2026-10-29": {"date": "2026-10-29", "weekday_short": "Thu", "month_day": "10/29", "is_today": false, "is_past": true, "is_future": false, "new_meetings": 24, "total_meetings": 32, "fu": 7, "resch": 1, "open_slots": null, "missed": 4, "target": 42, "target_pct": 57.14285714285714, "target_class": "tgt-red"}, "2026-10-30": {"date": "2026-10-30", "weekday_short": "Fri", "month_day": "10/30", "is_today": false, "is_past": true, "is_future": false, "new_meetings": 28, "total_meetings": 44, "fu": 15, "resch": 1, "open_slots": null, "missed": 13, "target": 42, "target_pct": 66.66666666666666, "target_class": "tgt-red"}, "2026-10-31": {"date": "2026-10-31", "weekday_short": "Sat", "month_day": "10/31", "is_today": true, "is_past": false, "is_future": false, "new_meetings": 7, "total_meetings": 15, "fu": 6, "resch": 2, "open_slots": 13, "missed": 0, "target": null, "target_pct": null, "target_class": ""}, "2026-11-01": {"date": "2026-11-01", "weekday_short": "Sun", "month_day": "11/1", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 4, "total_meetings": 5, "fu": 1, "resch": 0, "open_slots": 0, "missed": null, "target": null, "target_pct": null, "target_class": ""}, "2026-11-02": {"date": "2026-11-02", "weekday_short": "Mon", "month_day": "11/2", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 12, "total_meetings": 29, "fu": 14, "resch": 3, "open_slots": 0, "missed": null, "target": 42, "target_pct": 28.57142857142857, "target_class": "tgt-red"}, "2026-11-03": {"date": "2026-11-03", "weekday_short": "Tue", "month_day": "11/3", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 6, "total_meetings": 17, "fu": 8, "resch": 3, "open_slots": 0, "missed": null, "target": 42, "target_pct": 14.285714285714285, "target_class": "tgt-red"}, "2026-11-04": {"date": "2026-11-04", "weekday_short": "Wed", "month_day": "11/4", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 2, "total_meetings": 8, "fu": 4, "resch": 2, "open_slots": 0, "missed": null, "target": 42, "target_pct": 4.761904761904762, "target_class": "tgt-red"}, "2026-11-05": {"date": "2026-11-05", "weekday_short": "Thu", "month_day": "11/5", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 1, "total_meetings": 3, "fu": 1, "resch": 1, "open_slots": 0, "missed": null, "target": 42, "target_pct": 2.380952380952381, "target_class": "tgt-red"}, "2026-11-06": {"date": "2026-11-06", "weekday_short": "Fri", "month_day": "11/6", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 3, "total_meetings": 5, "fu": 1, "resch": 1, "open_slots": 0, "missed": null, "target": 42, "target_pct": 7.142857142857142, "target_class": "tgt-red"}, "2026-11-07": {"date": "2026-11-07", "weekday_short": "Sat", "month_day": "11/7", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 0, "total_meetings": 0, "fu": 0, "resch": 0, "open_slots": 0, "missed": null, "target": null, "target_pct": null, "target_class": ""}, "2026-11-08": {"date": "2026-11-08", "weekday_short": "Sun", "month_day": "11/8", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 0, "total_meetings": 0, "fu": 0, "resch": 0, "open_slots": 0, "missed": null, "target": null, "target_pct": null, "target_class": ""}, "2026-11-09": {"date": "2026-11-09", "weekday_short": "Mon", "month_day": "11/9", "is_today": false, "is_past": false, "is_future": true, "new_meetings": 0, "total_meetings": 3, "fu": 3, "resch": 0, "open_slots": 0, "missed": null, "target": 42, "target_pct": 0.0, "target_class": "tgt-red"}}'>
+    <button class="hero-arrow hero-arrow-left" onclick="shiftCardFocus(-1)" aria-label="Previous day">‹</button>
+    <div class="hero-slot hero-slot-prev"   id="hero-slot-prev"   onclick="setCardFocus(_focusedIdx - 1)"></div>
+    <div class="hero-slot hero-slot-current" id="hero-slot-current" onclick="openFocusedDayDetail()"></div>
+    <div class="hero-slot hero-slot-next"   id="hero-slot-next"   onclick="setCardFocus(_focusedIdx + 1)"></div>
+    <button class="hero-arrow hero-arrow-right" onclick="shiftCardFocus(1)" aria-label="Next day">›</button>
+  </div>
+
+  <div class="card">
+    
+    <table><colgroup><col style="width:200px"><col span="14"></colgroup>
+      <thead><tr><th class="sec-label">FUNNEL DETAILS</th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-27')">TUE<br>10/27</th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-28')">WED<br>10/28</th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-29')">THU<br>10/29</th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-30')">FRI<br>10/30</th><th class="col-date today day-clickable" title="Click for details" onclick="showDayDetail('2026-10-31')">► TODAY<br>10/31</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-01')">SUN<br>11/01</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-02')">MON<br>11/02</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-03')">TUE<br>11/03</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-04')">WED<br>11/04</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-05')">THU<br>11/05</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-06')">FRI<br>11/06</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-07')">SAT<br>11/07</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-08')">SUN<br>11/08</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-09')">MON<br>11/09</th></tr></thead>
+      <tbody><tr><td class="label">Instagram (Mike)</td><td class="num has-count past">4/11</td><td class="num zero past">0/11</td><td class="num has-count past">1/11</td><td class="num has-count past">1/11</td><td class="num zero today">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td><td class="num zero">0/11</td></tr>
+<tr><td class="label">YouTube</td><td class="num has-count past">2/6</td><td class="num zero past">0/6</td><td class="num zero past">0/6</td><td class="num has-count past">2/6</td><td class="num has-count today">1/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td><td class="num zero">0/6</td></tr>
+<tr><td class="label">Anthony LinkedIn</td><td class="num zero past">0/1</td><td class="num zero past">0/1</td><td class="num zero past">0/1</td><td class="num zero past">0/1</td><td class="num zero today">0/1</td><td class="num zero">0/1</td><td class="num has-count">1/1</td><td class="num has-count">1/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td></tr>
+<tr><td class="label">Website</td><td class="num has-count past">1/5</td><td class="num zero past">0/5</td><td class="num has-count past">3/5</td><td class="num has-count past">1/5</td><td class="num zero today">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td><td class="num zero">0/5</td></tr>
+<tr><td class="label">Internal Webinar</td><td class="num has-count past">2/3</td><td class="num has-count past">4/3</td><td class="num has-count past">8/3</td><td class="num has-count past">10/3</td><td class="num has-count today">2/3</td><td class="num has-count">1/3</td><td class="num has-count">1/3</td><td class="num zero">0/3</td><td class="num zero">0/3</td><td class="num zero">0/3</td><td class="num zero">0/3</td><td class="num zero">0/3</td><td class="num zero">0/3</td><td class="num zero">0/3</td></tr>
+<tr><td class="label">Side Hustle Nation/WWWS</td><td class="num zero past">0/1</td><td class="num zero past">0/1</td><td class="num zero past">0/1</td><td class="num has-count past">1/1</td><td class="num zero today">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td><td class="num zero">0/1</td></tr>
+<tr class="funnel-expandable" onclick="toggleSetterRows(this)"><td class="label"><span class="chevron">▶</span> Reactivation Scrapers</td><td class="num has-count past">11</td><td class="num has-count past">16</td><td class="num has-count past">11</td><td class="num has-count past">11</td><td class="num has-count today">2</td><td class="num has-count">3</td><td class="num has-count">9</td><td class="num has-count">4</td><td class="num has-count">2</td><td class="num has-count">1</td><td class="num has-count">3</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">Brad Savage</td><td class="num past" style="color:#777;">4</td><td class="num past" style="color:#777;">5</td><td class="num past" style="color:#777;">1</td><td class="num past" style="color:#777;">3</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">3</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">Rob Maxfield</td><td class="num past" style="color:#777;">2</td><td class="num past" style="color:#777;">3</td><td class="num past" style="color:#777;">3</td><td class="num past" style="color:#777;">1</td><td class="num today" style="color:#777;">2</td><td class="num" style="color:#777;">3</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">Vince Bartolini</td><td class="num past" style="color:#777;">3</td><td class="num past" style="color:#777;">2</td><td class="num past" style="color:#777;">1</td><td class="num past" style="color:#777;">3</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">August Young</td><td class="num zero past">0</td><td class="num past" style="color:#777;">2</td><td class="num past" style="color:#777;">5</td><td class="num past" style="color:#777;">4</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">Cassie Caraballo</td><td class="num zero past">0</td><td class="num past" style="color:#777;">3</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">Connor George</td><td class="num past" style="color:#777;">1</td><td class="num past" style="color:#777;">1</td><td class="num past" style="color:#777;">1</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">Naria Torres</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr class="setter-row" style="display:none;"><td class="label" style="padding-left:2rem;font-size:0.72rem;color:#555;">Igor Trojanowski</td><td class="num past" style="color:#777;">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="label">Google Ads</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num has-count past">1</td><td class="num has-count past">2</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num has-count">1</td><td class="num has-count">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="label" style="color:#b8860b;font-weight:600;" title="Leads whose funnel value could not be mapped — review attribution in Close">⚠ Unknown (Needs Review)</td><td class="num has-count past">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num has-count today">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+</tbody>
+    </table>
+    <table><colgroup><col style="width:200px"><col span="14"></colgroup>
+      <tbody>
+        <tr class="total-row"><td class="metric">TOTAL</td><td class="num total-num past">21</td><td class="num total-num past">20</td><td class="num total-num past">24</td><td class="num total-num past">28</td><td class="num total-num today">7</td><td class="num total-num">4</td><td class="num total-num">12</td><td class="num total-num">6</td><td class="num total-num">2</td><td class="num total-num">1</td><td class="num total-num">3</td><td class="num total-num">0</td><td class="num total-num">0</td><td class="num total-num">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ltf-collapsible">
+    <details>
+      <summary>Rep Details — Ariella: 15 · Christian: 20 · Eric: 1 · Joe: 6 · Joseph: 15 · Luke: 23 · Robin: 17 · Scott: 19 · Shreya: 6</summary>
+      <div class="card" style="margin-top:0.5rem;">
+        <table><colgroup><col style="width:200px"><col span="14"></colgroup>
+          <thead><tr><th></th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-27')">TUE<br>10/27</th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-28')">WED<br>10/28</th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-29')">THU<br>10/29</th><th class="col-date past day-clickable" title="Click for details" onclick="showDayDetail('2026-10-30')">FRI<br>10/30</th><th class="col-date today day-clickable" title="Click for details" onclick="showDayDetail('2026-10-31')">► TODAY<br>10/31</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-01')">SUN<br>11/01</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-02')">MON<br>11/02</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-03')">TUE<br>11/03</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-04')">WED<br>11/04</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-05')">THU<br>11/05</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-06')">FRI<br>11/06</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-07')">SAT<br>11/07</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-08')">SUN<br>11/08</th><th class="col-date day-clickable" title="Click for details" onclick="showDayDetail('2026-11-09')">MON<br>11/09</th></tr></thead>
+          <tbody>
+            <tr><td class="metric" style="font-weight:700;padding-top:0.5rem;">Ariella Irvine</td><td class="num ltf-total past">2</td><td class="num ltf-total past">2</td><td class="num ltf-total past">5</td><td class="num ltf-total past">3</td><td class="num ltf-total today">1</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num past">1</td><td class="num past">1</td><td class="num past">1</td><td class="num past">1</td><td class="num today">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num past">1</td><td class="num past">1</td><td class="num past">4</td><td class="num past">2</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num past" style="color:#777;">5</td><td class="num past" style="color:#777;">6</td><td class="num past" style="color:#777;">6</td><td class="num past" style="color:#777;">7</td><td class="num today" style="color:#777;">2</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">6</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Christian Hartwell</td><td class="num ltf-total past">4</td><td class="num ltf-total past">4</td><td class="num ltf-total past">4</td><td class="num ltf-total past">5</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num ltf-total">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Google Ads</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Instagram (Mike)</td><td class="num past">2</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num past">2</td><td class="num past">4</td><td class="num past">1</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Side Hustle Nation/WWWS</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Website</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num past" style="color:#777;">6</td><td class="num past" style="color:#777;">9</td><td class="num past" style="color:#777;">7</td><td class="num past" style="color:#777;">9</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">7</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">3</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Eric Piccione</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Google Ads</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num" style="color:#777;">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Joe Dysert</td><td class="num zero past">0</td><td class="num ltf-total past">2</td><td class="num zero past">0</td><td class="num ltf-total past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num ltf-total">1</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num zero past">0</td><td class="num past">2</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num">1</td><td class="num">1</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num past" style="color:#777;">1</td><td class="num past" style="color:#777;">3</td><td class="num past" style="color:#777;">4</td><td class="num past" style="color:#777;">5</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Joseph Vaughan</td><td class="num ltf-total past">6</td><td class="num ltf-total past">3</td><td class="num zero past">0</td><td class="num ltf-total past">4</td><td class="num ltf-total today">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">2</td><td class="num today">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num past">4</td><td class="num past">3</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Website</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">YouTube</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num past" style="color:#777;">6</td><td class="num past" style="color:#777;">3</td><td class="num zero past">0</td><td class="num past" style="color:#777;">6</td><td class="num today" style="color:#777;">3</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Luke Herman</td><td class="num ltf-total past">2</td><td class="num ltf-total past">3</td><td class="num ltf-total past">7</td><td class="num ltf-total past">4</td><td class="num ltf-total today">5</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Anthony LinkedIn</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Google Ads</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Instagram (Mike)</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">2</td><td class="num past">2</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num past">1</td><td class="num past">3</td><td class="num past">4</td><td class="num past">1</td><td class="num today">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Unknown (Needs Review)</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num today">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Website</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">YouTube</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num today">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num past" style="color:#777;">6</td><td class="num past" style="color:#777;">6</td><td class="num past" style="color:#777;">7</td><td class="num past" style="color:#777;">7</td><td class="num today" style="color:#777;">11</td><td class="num zero">0</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">3</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Robin Perkins</td><td class="num ltf-total past">3</td><td class="num ltf-total past">2</td><td class="num ltf-total past">2</td><td class="num ltf-total past">5</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num ltf-total">2</td><td class="num ltf-total">1</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Instagram (Mike)</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num past">1</td><td class="num past">2</td><td class="num past">1</td><td class="num past">4</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num">2</td><td class="num">1</td><td class="num">1</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Unknown (Needs Review)</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Website</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num past" style="color:#777;">4</td><td class="num past" style="color:#777;">5</td><td class="num past" style="color:#777;">3</td><td class="num past" style="color:#777;">5</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">6</td><td class="num" style="color:#777;">3</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">1</td><td class="num" style="color:#777;">2</td><td class="num zero">0</td><td class="num zero">0</td><td class="num" style="color:#777;">1</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Scott Seymour</td><td class="num ltf-total past">4</td><td class="num ltf-total past">3</td><td class="num ltf-total past">6</td><td class="num ltf-total past">5</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Google Ads</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Instagram (Mike)</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num past">1</td><td class="num past">1</td><td class="num past">4</td><td class="num past">2</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num past">2</td><td class="num past">2</td><td class="num past">1</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">YouTube</td><td class="num past">1</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num past">1</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num past" style="color:#777;">5</td><td class="num past" style="color:#777;">6</td><td class="num past" style="color:#777;">8</td><td class="num past" style="color:#777;">7</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num" style="color:#777;">5</td><td class="num" style="color:#777;">3</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr style="border-top:2px solid #e0e0e0;"><td class="metric" style="font-weight:700;padding-top:0.5rem;">Shreya Bechra</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num ltf-total">4</td><td class="num ltf-total">1</td><td class="num ltf-total">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Anthony LinkedIn</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Internal Webinar</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#555;">Reactivation Scrapers</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num">3</td><td class="num zero">0</td><td class="num">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+<tr><td class="metric" style="padding-left:1.2rem;font-size:0.72rem;color:#777;font-weight:600;border-top:1px solid #ececec;" title="All non-internal meetings on the calendar (first calls + follow-ups + reschedules). Informational — compare against the rep header above to spot mis-titled meetings.">Total Calls (Inc. F/Us, Resch., etc.)</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero past">0</td><td class="num zero today">0</td><td class="num" style="color:#777;">4</td><td class="num" style="color:#777;">2</td><td class="num" style="color:#777;">1</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td><td class="num zero">0</td></tr>
+
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+  </div>
+
+  <div class="footer">
+    <span>Source: First Sales Call Booked Date field · <a href="archive.html">📁 Archive</a></span>
+    <span style="display:inline-flex;align-items:center;gap:16px;">
+      
+<style>
+  .csv-download-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    background:#fff; color:#555; border:1px solid #ddd; border-radius:6px;
+    padding:6px 12px; font-size:12px; font-family:inherit; cursor:pointer;
+    white-space:nowrap; flex-shrink:0;
+  }
+  .csv-download-btn:hover { border-color:#1b7a2e; color:#1b7a2e; }
+</style>
+<script>
+  function csvEscape(value) {
+    const s = String(value == null ? "" : value);
+    if (/["\n,]/.test(s)) { return '"' + s.replace(/"/g, '""') + '"'; }
+    return s;
+  }
+  function downloadDashboardCSV() {
+    const rows = [];
+    let currentFunnel = "";
+    document.querySelectorAll("table").forEach(table => {
+      const secTh = table.querySelector("thead th.sec-label");
+      const hasTotal = table.querySelector("tr.total-row");
+      if (!secTh && !hasTotal) return;  // skip non-funnel tables (rep details etc.)
+      if (secTh && rows.length === 0) {
+        rows.push(Array.from(table.querySelectorAll("thead th"))
+          .map(th => th.textContent.replace(/\s+/g, " ").trim()));
+      }
+      table.querySelectorAll("tbody tr").forEach(tr => {
+        const cells = Array.from(tr.children).map(td =>
+          td.textContent.replace(/[›▶▼]/g, "").replace(/\s+/g, " ").trim());
+        if (!cells.length) return;
+        if (tr.classList.contains("funnel-expandable")) {
+          currentFunnel = cells[0];
+        } else if (tr.classList.contains("setter-row")) {
+          cells[0] = currentFunnel + " — " + cells[0];  // e.g. "Reactivation Scrapers — Vince Bartolini"
+        }
+        rows.push(cells);
+      });
+    });
+    if (rows.length < 2) return;
+    const csv = rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "call-capacity-2026-10-31.csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+</script>
+<button type="button" class="csv-download-btn" onclick="downloadDashboardCSV()">⬇ Download CSV</button>
+      <a href="https://stephenolivas.github.io/mtd-funnel-dashboard/" target="_blank">📊 MTD Funnel Reporting →</a>
+    </span>
+  </div>
+
+  <div class="card" style="margin-top:0.75rem;">
+    <details id="calendly-diagnostics" data-diagnostics="{&quot;api_key_configured&quot;: true, &quot;checked_at_utc&quot;: &quot;2026-10-31 07:08:46 UTC&quot;, &quot;dates&quot;: {&quot;2026-10-31&quot;: {&quot;accelerator&quot;: {&quot;reason&quot;: &quot;consultation_has_slots&quot;, &quot;status&quot;: &quot;not_queried&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 13, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-01T06:59:59Z&quot;, &quot;slots&quot;: 13, &quot;start_utc&quot;: &quot;2026-10-31T07:09:46Z&quot;, &quot;status&quot;: &quot;slots_found&quot;}, &quot;2026-11-01&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-02T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-01T07:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-02&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-03T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-02T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-03&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-04T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-03T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-04&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-05T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-04T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-05&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-06T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-05T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-06&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-07T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-06T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-07&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-08T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-07T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-08&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-09T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-08T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}, &quot;2026-11-09&quot;: {&quot;accelerator&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;consultation&quot;: {&quot;http_status&quot;: 200, &quot;slots&quot;: 0, &quot;status&quot;: &quot;ok&quot;}, &quot;end_utc&quot;: &quot;2026-11-10T07:59:59Z&quot;, &quot;slots&quot;: 0, &quot;start_utc&quot;: &quot;2026-11-09T08:00:00Z&quot;, &quot;status&quot;: &quot;zero_or_request_error&quot;}}, &quot;status&quot;: &quot;complete&quot;}">
+      <summary style="cursor:pointer;font-weight:600;">Calendly availability diagnostics</summary>
+      <p style="color:#666;font-size:0.85rem;">Request status and slot counts from the last dashboard refresh. No credentials are included.</p>
+      <pre id="calendly-diagnostics-output" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:0.75rem;max-height:24rem;overflow:auto;"></pre>
+    </details>
+  </div>
+</div>
+
+<script>
+(function () {
+  var panel = document.getElementById('calendly-diagnostics');
+  var output = document.getElementById('calendly-diagnostics-output');
+  if (panel && output) {
+    try {
+      output.textContent = JSON.stringify(JSON.parse(panel.dataset.diagnostics || '{}'), null, 2);
+    } catch (error) {
+      output.textContent = 'Unable to read Calendly diagnostics: ' + error.message;
+    }
+  }
+})();
+</script>
+
+<!-- Day Detail Panel -->
+<div id="dayOverlay" class="day-panel-overlay" onclick="closeDayPanel()"></div>
+<div id="dayPanel" class="day-panel">
+  <button class="dp-close" onclick="closeDayPanel()">✕</button>
+  <div class="dp-title"></div>
+  <div class="dp-subtitle"></div>
+
+  <div class="dp-section">Funnel Breakdown</div>
+  <div id="dpFunnels"></div>
+
+  <div class="dp-section">Rep Breakdown</div>
+  <div id="dpReps"></div>
+
+  <div class="dp-section">When Booked</div>
+  <div id="dpBooked"></div>
+
+  <div class="dp-section dp-section-collapsible" onclick="toggleNonNewDetails()">
+    <span class="dp-chevron" id="dpNonNewChevron">▶</span> F/U &amp; Reschedule Details
+    <span class="dp-section-count" id="dpNonNewCount"></span>
+  </div>
+  <div id="dpNonNewDetails" style="display:none;"></div>
+</div>
+
+
+    <script>
+    var _dayDetail = {"2026-10-31": {"total": 7, "funnels": [["Unknown (Needs Review)", 2, 29], ["Internal Webinar", 2, 29], ["Reactivation Scrapers", 2, 29], ["YouTube", 1, 14]], "reps": [["Luke Herman", 5, 5, 10, false], ["Ariella Irvine", 1, 1, 2, false], ["Joseph Vaughan", 1, 2, 3, false]], "booked_on": [["2026-10-26", 1, 14], ["2026-10-28", 1, 14], ["2026-10-29", 3, 43], ["2026-10-30", 2, 29]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Domonique marie menstell fraser", "lead_url": "https://app.close.com/lead/lead_E0zPXULJaPW2yJ7dCZ0Yvuw8LIwjNAXZAknAXy8PARc/", "funnel_name": "Internal Webinar", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Dynystasia Parish", "lead_url": "https://app.close.com/lead/lead_qLZSkh21BIme3W2FcDPLAB1u5peReWqXC7mGNUxnv5S/", "funnel_name": "Reactivation Scrapers", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Laura Khan", "lead_url": "https://app.close.com/lead/lead_UrngTY6TmnKOhMUDL3IOueuoqCXC8LyN0rrGIpB2VN1/", "funnel_name": "Google Ads", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Oluwatimilehin Soyoola", "lead_url": "https://app.close.com/lead/lead_sXaPspXYgvMnFplmvsOniN4EXfLPlrED5jiZEqngXWZ/", "funnel_name": "Reactivation Scrapers", "owner_name": "Joseph Vaughan"}, {"category": "fu", "category_label": "F/U", "lead_name": "Robert Hackett", "lead_url": "https://app.close.com/lead/lead_rV3BjiIn2GldnoCjLsCSRqFg0yaUch9dzlv78t26VS8/", "funnel_name": "YouTube", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Toni White", "lead_url": "https://app.close.com/lead/lead_8jNdiB3YRKw9Uf3XrWxJbwrglOYkD4Mj5ZAOUNI0Qpq/", "funnel_name": "Internal Webinar", "owner_name": "Luke Herman"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Brandon Robinson", "lead_url": "https://app.close.com/lead/lead_9H0dQi4ij4mUpYpMGIEEmoPytz96LosunaOtHHG23DP/", "funnel_name": "Internal Webinar", "owner_name": "Joseph Vaughan"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Dexter Barnes", "lead_url": "https://app.close.com/lead/lead_Eqfqy6kWCs5Ddo0PPIqIS8fuddgCqB9UGLg8HcjahUH/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}]}, "2026-10-30": {"total": 28, "funnels": [["Reactivation Scrapers", 11, 39], ["Internal Webinar", 10, 36], ["YouTube", 2, 7], ["Google Ads", 2, 7], ["Other", 3, 11]], "reps": [["Christian Hartwell", 5, 3, 8, false], ["Robin Perkins", 5, 0, 5, false], ["Scott Seymour", 5, 2, 7, false], ["Joseph Vaughan", 4, 1, 5, false], ["Luke Herman", 4, 3, 7, false], ["Ariella Irvine", 3, 3, 6, false], ["Joe Dysert", 1, 4, 5, false]], "booked_on": [["2026-10-21", 1, 4], ["2026-10-25", 1, 4], ["2026-10-27", 12, 43], ["2026-10-28", 6, 21], ["2026-10-29", 8, 29]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Andrew Millar", "lead_url": "https://app.close.com/lead/lead_b04wTLlUg9HxDywjYCWyD0IhJe7cBzp4nSkRk7FW4fa/", "funnel_name": "Reactivation Scrapers", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Antonio urquheart", "lead_url": "https://app.close.com/lead/lead_Klltjgnjeyxm83uNGMMmyPSIdFZhRh2AVE3TnnnSgCA/", "funnel_name": "Reactivation Scrapers", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Bryan Roberts", "lead_url": "https://app.close.com/lead/lead_ygAyhLtCklWC8XN6npV8ZiqJiOFT3LsH4vtYplAtNHW/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Christian Nunez", "lead_url": "https://app.close.com/lead/lead_xB21PGBSgsD7d4taBH7Ux3HzgnUMybKu91J0LKmi1Un/", "funnel_name": "YouTube", "owner_name": "Joe Dysert"}, {"category": "fu", "category_label": "F/U", "lead_name": "Dale Allman", "lead_url": "https://app.close.com/lead/lead_JO4KafjvMKrGDjs8TwLH23LVIoKTDhfvdoRaFSYN88b/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Gaurang Budhiraja", "lead_url": "https://app.close.com/lead/lead_jgDxGUF1sc6cj1yuRLeQGrk1YZZuaBp9bHb3iNa9Gv3/", "funnel_name": "Reactivation Scrapers", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "George Johnson", "lead_url": "https://app.close.com/lead/lead_Avy22EEoj5PnIvVFNpjTnsgs9kaAKuFAyRDXEg45vdm/", "funnel_name": "Internal Webinar", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Joe Thomas", "lead_url": "https://app.close.com/lead/lead_60ZZ9XJ7ZdIVU7qxxVstJtZorD6jUTwgmV17tqfJFCe/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "fu", "category_label": "F/U", "lead_name": "Kevin MacDonald", "lead_url": "https://app.close.com/lead/lead_hKTWDHNAgT6Qel8uwJPtAQ1VkeNjqKYc7VRoJexn170/", "funnel_name": "VSL", "owner_name": "Ariella Irvine"}, {"category": "fu", "category_label": "F/U", "lead_name": "Marie Prinston", "lead_url": "https://app.close.com/lead/lead_aIAkPKu4sIVowaPvj5tPQh3UA7AcxzJef1K1bihZ3yy/", "funnel_name": "Internal Webinar", "owner_name": "Joe Dysert"}, {"category": "fu", "category_label": "F/U", "lead_name": "Michael Ridgway", "lead_url": "https://app.close.com/lead/lead_vBHfclXa3pXHqiWthHx6yOtJBXedKMYKLbbdN0xTZ75/", "funnel_name": "LTF - In-House", "owner_name": "Joe Dysert"}, {"category": "fu", "category_label": "F/U", "lead_name": "Paige Aldridge", "lead_url": "https://app.close.com/lead/lead_B9HQSIYHX7EvLYlpIAjUnIZrRHubpSpukglvV26NwIt/", "funnel_name": "Reactivation Scrapers", "owner_name": "Joseph Vaughan"}, {"category": "fu", "category_label": "F/U", "lead_name": "Quentin", "lead_url": "https://app.close.com/lead/lead_Ii4TUcZYYOpxJc32hkurlx5N66gspHyWiE1xVeTpmgy/", "funnel_name": "(no funnel)", "owner_name": "Joe Dysert"}, {"category": "fu", "category_label": "F/U", "lead_name": "Tom Neill", "lead_url": "https://app.close.com/lead/lead_0ee5bEkpqDkYzRslFMYJ48neJvjRe0tqay6o3s54By5/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Usama Gawad", "lead_url": "https://app.close.com/lead/lead_UJ4FjBKW4P8bZt2Zu4b0kpsiXTq0DMXeWZtNwFl8chz/", "funnel_name": "Internal Webinar", "owner_name": "Scott Seymour"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Alan Benson", "lead_url": "https://app.close.com/lead/lead_xgFAEQe8JL8PgsuAwkFwZBdTdmZ0oTO7yIOwHhVaQhU/", "funnel_name": "Internal Webinar", "owner_name": "Ariella Irvine"}]}, "2026-10-27": {"total": 21, "funnels": [["Reactivation Scrapers", 11, 52], ["Instagram (Mike)", 4, 19], ["Internal Webinar", 2, 10], ["YouTube", 2, 10], ["Other", 2, 10]], "reps": [["Joseph Vaughan", 6, 1, 7, false], ["Christian Hartwell", 4, 1, 5, false], ["Scott Seymour", 4, 1, 5, false], ["Robin Perkins", 3, 1, 4, false], ["Ariella Irvine", 2, 3, 5, false], ["Luke Herman", 2, 4, 6, false], ["Joe Dysert", 0, 1, 1, false]], "booked_on": [["2026-10-10", 1, 5], ["2026-10-22", 3, 14], ["2026-10-23", 1, 5], ["2026-10-24", 2, 10], ["2026-10-25", 1, 5], ["2026-10-26", 10, 48], ["2026-10-27", 3, 14]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Andrew Millar", "lead_url": "https://app.close.com/lead/lead_b04wTLlUg9HxDywjYCWyD0IhJe7cBzp4nSkRk7FW4fa/", "funnel_name": "Reactivation Scrapers", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Christian Nunez", "lead_url": "https://app.close.com/lead/lead_xB21PGBSgsD7d4taBH7Ux3HzgnUMybKu91J0LKmi1Un/", "funnel_name": "YouTube", "owner_name": "Joseph Vaughan"}, {"category": "fu", "category_label": "F/U", "lead_name": "Damon Blair-Jones", "lead_url": "https://app.close.com/lead/lead_GeaEKEoK9Rl5P0mBjev6aSEDRHEFcWbbwJhjhqQs1Wm/", "funnel_name": "Reactivation Scrapers", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Daniel Cornejo", "lead_url": "https://app.close.com/lead/lead_AAzLfHNz7PzmILzScvTwHSbYhs5FQ45tOWS84Z3hnPC/", "funnel_name": "YouTube", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "K J", "lead_url": "https://app.close.com/lead/lead_nsO760j0knNypIIxkPgdjGm3sZU8vd8HLU4IdtL1i1a/", "funnel_name": "Internal Webinar", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Kevin Garthwaite", "lead_url": "https://app.close.com/lead/lead_W3fhrym7u5SNxAIu1mmNSprct8spCUPMr7zSltVjtSA/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Peter Villagomez", "lead_url": "https://app.close.com/lead/lead_BXRSk90fiO4lJKsPIilcgog0ka0BjPDVVprZpGIQZpN/", "funnel_name": "Reactivation Scrapers", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Quentin", "lead_url": "https://app.close.com/lead/lead_Ii4TUcZYYOpxJc32hkurlx5N66gspHyWiE1xVeTpmgy/", "funnel_name": "(no funnel)", "owner_name": "Joe Dysert"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Alan Benson", "lead_url": "https://app.close.com/lead/lead_xgFAEQe8JL8PgsuAwkFwZBdTdmZ0oTO7yIOwHhVaQhU/", "funnel_name": "Internal Webinar", "owner_name": "Ariella Irvine"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Kamryn Stallings", "lead_url": "https://app.close.com/lead/lead_jABMOCo46wm8HeOM6ljZAuktt9KgOq5YN4OKcZUNBDG/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Marcus Ryans", "lead_url": "https://app.close.com/lead/lead_pvG3LqlDrrejmT07NkvTAfYfz2BPJTyNv5EZCuMXJfL/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Rosemary Vukmanich", "lead_url": "https://app.close.com/lead/lead_YYjxjahID58R17sC7zUzS5VZU5QhFfGEHLUnt4C2xo0/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}]}, "2026-10-28": {"total": 20, "funnels": [["Reactivation Scrapers", 16, 80], ["Internal Webinar", 4, 20]], "reps": [["Christian Hartwell", 4, 3, 7, false], ["Joseph Vaughan", 3, 0, 3, false], ["Luke Herman", 3, 4, 7, false], ["Scott Seymour", 3, 2, 5, false], ["Ariella Irvine", 2, 3, 5, false], ["Joe Dysert", 2, 1, 3, false], ["Robin Perkins", 2, 3, 5, false]], "booked_on": [["2026-10-14", 1, 5], ["2026-10-22", 1, 5], ["2026-10-23", 1, 5], ["2026-10-26", 1, 5], ["2026-10-27", 12, 60], ["2026-10-28", 4, 20]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Brian Watson", "lead_url": "https://app.close.com/lead/lead_l8bm3IlCA6BcdwhnSo9itydqWqM6RDqk8dhXJIU19R1/", "funnel_name": "LTF - In-House", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Carolina Ramirez", "lead_url": "https://app.close.com/lead/lead_XS75OZTvR25k95QVTH3yEM9GBRwpHWMDjqAfrfQdMw4/", "funnel_name": "Instagram", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Eric Bonds", "lead_url": "https://app.close.com/lead/lead_0mrTmAWXzFiUxLs2QbHmbhAkVLVKrSX6ZOYcoNk1DXO/", "funnel_name": "Internal Webinar", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Greg Solin", "lead_url": "https://app.close.com/lead/lead_a8pPgZvu7dBXB0OBHkz99lI0kDY10OUjaSJM4DFnOk8/", "funnel_name": "Linkedin", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jesse Oliver", "lead_url": "https://app.close.com/lead/lead_REOQtTIV7usgS53PkJVN1KaZsHXpbeVkbrSVdDlsJr2/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jon Shumway", "lead_url": "https://app.close.com/lead/lead_S6aph8pzBUuj6iCoG3uXSiR7tdln662Y7Y7Wm4Xwsg8/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Kamryn Stallings", "lead_url": "https://app.close.com/lead/lead_jABMOCo46wm8HeOM6ljZAuktt9KgOq5YN4OKcZUNBDG/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "fu", "category_label": "F/U", "lead_name": "Laverne Henegain", "lead_url": "https://app.close.com/lead/lead_URonvatYw75azIynwMiMUvZNZiFZviNBvITK72zlWpj/", "funnel_name": "Internal Webinar", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Quentin", "lead_url": "https://app.close.com/lead/lead_Ii4TUcZYYOpxJc32hkurlx5N66gspHyWiE1xVeTpmgy/", "funnel_name": "(no funnel)", "owner_name": "Joe Dysert"}, {"category": "fu", "category_label": "F/U", "lead_name": "Robert Hackett", "lead_url": "https://app.close.com/lead/lead_rV3BjiIn2GldnoCjLsCSRqFg0yaUch9dzlv78t26VS8/", "funnel_name": "YouTube", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Shelia Branson", "lead_url": "https://app.close.com/lead/lead_uyuYkklKiyXG0haqaCdeHpF8tto2RdduqDafFzmMPY0/", "funnel_name": "Internal Webinar", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Steven Perrins", "lead_url": "https://app.close.com/lead/lead_Z7lvLlnnwhss0bI6tsTb2ylSfIxjXXw6jdp8G8rkuQx/", "funnel_name": "Internal Webinar", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "William Large", "lead_url": "https://app.close.com/lead/lead_UZv1fjglWZagC17SgA4SglNqRnbqRbklxZ2W2rn1kae/", "funnel_name": "Reactivation Scrapers", "owner_name": "Scott Seymour"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Jahnavi Holmes", "lead_url": "https://app.close.com/lead/lead_NfxM4xgmVMuUlXOdAUqZd5eA1vJ7uUNfBoea4MHpGJX/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Omar Arroyo", "lead_url": "https://app.close.com/lead/lead_aFB5NpQuMIrhRXa3ARUrMuJFyv5wT8QIDH0Ap1VbJLW/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Sherilyn Fristoe", "lead_url": "https://app.close.com/lead/lead_BgPzK9vi38iu46WXWaEbmt7coVCgX0KCZD9xJAT1IxT/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}]}, "2026-10-29": {"total": 24, "funnels": [["Reactivation Scrapers", 11, 46], ["Internal Webinar", 8, 33], ["Website", 3, 12], ["Google Ads", 1, 4], ["Other", 1, 4]], "reps": [["Luke Herman", 7, 0, 7, false], ["Scott Seymour", 6, 2, 8, false], ["Ariella Irvine", 5, 1, 6, false], ["Christian Hartwell", 4, 2, 6, false], ["Robin Perkins", 2, 1, 3, false], ["Joe Dysert", 0, 2, 2, false]], "booked_on": [["2026-10-23", 1, 4], ["2026-10-24", 1, 4], ["2026-10-26", 6, 25], ["2026-10-27", 9, 38], ["2026-10-28", 5, 21], ["2026-10-29", 2, 8]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Armando Alarcon", "lead_url": "https://app.close.com/lead/lead_LGSFV6mLHhCW0zOhBZHNwHOK0VYpQM12bFl6eG1djac/", "funnel_name": "Google Ads", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jake Peck", "lead_url": "https://app.close.com/lead/lead_M2v92IsOy3EcnxucbtO6kT7X3rLJoWAZZpHlqQb1fad/", "funnel_name": "Reactivation Scrapers", "owner_name": "Joe Dysert"}, {"category": "fu", "category_label": "F/U", "lead_name": "James Campo", "lead_url": "https://app.close.com/lead/lead_k2hyYeOeBqVa99kBAZHPv6WoibTT8R8qs52sjq4k18Q/", "funnel_name": "Reactivation Scrapers", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jimmy Waltrip", "lead_url": "https://app.close.com/lead/lead_hsvVwE8frFLp1wK45lNd07VYyrNKMcPImv3VztsC4Yp/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Julie Robinson", "lead_url": "https://app.close.com/lead/lead_bzchHscqf5KD0tXrhGPgw3hhkEckO6Zr1RR9hNE9WZd/", "funnel_name": "Reactivation Scrapers", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Kevin Dawid", "lead_url": "https://app.close.com/lead/lead_5Ew9EhkpSv5fpdQJqbCmZifGSTEcETo3rsjh2KyW3UR/", "funnel_name": "Internal Webinar", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Quentin", "lead_url": "https://app.close.com/lead/lead_Ii4TUcZYYOpxJc32hkurlx5N66gspHyWiE1xVeTpmgy/", "funnel_name": "(no funnel)", "owner_name": "Joe Dysert"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Kytzia", "lead_url": "https://app.close.com/lead/lead_3Fllp1syDFcxgSj0OgyB6l5anC1WLV3nslSEAmjRHWL/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}]}, "2026-11-02": {"total": 12, "funnels": [["Reactivation Scrapers", 9, 75], ["Google Ads", 1, 8], ["Anthony LinkedIn", 1, 8], ["Internal Webinar", 1, 8]], "reps": [["Christian Hartwell", 2, 3, 5, false], ["Robin Perkins", 2, 3, 5, false], ["Ariella Irvine", 1, 4, 5, false], ["Joe Dysert", 1, 1, 2, false], ["Luke Herman", 1, 1, 2, false], ["Scott Seymour", 1, 4, 5, false], ["Shreya Bechra", 1, 0, 1, false], ["Joseph Vaughan", 0, 1, 1, false]], "booked_on": [["2026-10-24", 1, 8], ["2026-10-26", 1, 8], ["2026-10-28", 3, 25], ["2026-10-29", 5, 42], ["2026-10-30", 2, 17]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Amanda Boehlke", "lead_url": "https://app.close.com/lead/lead_ucdt1zXDyIBBAuRtrtmJhoGBhbQKHpm0zt1qhUoS0gq/", "funnel_name": "Meta Ads", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Ashley Anderson", "lead_url": "https://app.close.com/lead/lead_XiIhcbXhTjYB9djAjehARCynTdHK4pYh2vLuZx4Pf6u/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Brandon Holloway", "lead_url": "https://app.close.com/lead/lead_hk3CUCIft8I2GCoObpJ0so2yYeFFe54IM0Hw4SMKsaM/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Brian Thesing", "lead_url": "https://app.close.com/lead/lead_QU6udZ7j2tUQBTq3tFzpeei02oM8JCjtKjpDbX2B9P1/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "fu", "category_label": "F/U", "lead_name": "Cecile Ypon", "lead_url": "https://app.close.com/lead/lead_10zKhwbPqEASzyhuhtoXjmmDMnCkRkgHDz6PbCTBW9j/", "funnel_name": "Internal Webinar", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Gaurang Budhiraja", "lead_url": "https://app.close.com/lead/lead_jgDxGUF1sc6cj1yuRLeQGrk1YZZuaBp9bHb3iNa9Gv3/", "funnel_name": "Reactivation Scrapers", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "GUSTAVO OLIVEIRA", "lead_url": "https://app.close.com/lead/lead_VN4qE6DPAVfd0hXFY3dRtHgY1EYRh3LVaiguBlt7vR4/", "funnel_name": "YouTube", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Isaac Monarrez", "lead_url": "https://app.close.com/lead/lead_RmskpW4TMHaD6xWn3d6iAOTwQOrPH8m5nHCcMhjNnqO/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "fu", "category_label": "F/U", "lead_name": "Joe", "lead_url": "https://app.close.com/lead/lead_jNAjcIDartJKqGC6Jl90EhhLpQXo6fsuKTkuK8Vabta/", "funnel_name": "Reactivation Scrapers", "owner_name": "Joe Dysert"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jyotiee Kistner", "lead_url": "https://app.close.com/lead/lead_lgEzuu5rrL2DFpTORuZowhiCIr4WMINSABd30RtDo8e/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Kenneth Cullins", "lead_url": "https://app.close.com/lead/lead_dcDKxAFZrwVxdOrGGZy6OvLeNrEcS02xknO64Jvpirr/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Mark Mitchell", "lead_url": "https://app.close.com/lead/lead_AuYrHnvL5IE5k6Ez21J7Q2H2RXCrzQtuqd8aIY9dDgf/", "funnel_name": "Internal Webinar", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Omar Arroyo", "lead_url": "https://app.close.com/lead/lead_aFB5NpQuMIrhRXa3ARUrMuJFyv5wT8QIDH0Ap1VbJLW/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Stephen Wilkinson", "lead_url": "https://app.close.com/lead/lead_pLyMw2w5LYpfcABxY51XKXOMbhXiegmWKp6LWER7Y4n/", "funnel_name": "Website", "owner_name": "Ariella Irvine"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Casse Roozeboom", "lead_url": "https://app.close.com/lead/lead_uLgP0bamhnuumnTB9UxtVcAQqhz85o7RfUGG6FImXiU/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Makeva Corley", "lead_url": "https://app.close.com/lead/lead_AAJy82tv8R4RrOexwOMnwYuOlAkqwXobF6fuzBjOhJM/", "funnel_name": "Internal Webinar", "owner_name": "Scott Seymour"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Thomas Kosinski", "lead_url": "https://app.close.com/lead/lead_Piq4vKETr8JVvvn9UbKrUetWneLba4W3BDBXQRzTgGW/", "funnel_name": "Instagram", "owner_name": "Joseph Vaughan"}]}, "2026-11-01": {"total": 4, "funnels": [["Reactivation Scrapers", 3, 75], ["Internal Webinar", 1, 25]], "reps": [["Shreya Bechra", 4, 0, 4, false], ["Ariella Irvine", 0, 1, 1, false]], "booked_on": [["2026-10-29", 2, 50], ["2026-10-30", 2, 50]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Alylan Thompson", "lead_url": "https://app.close.com/lead/lead_dKYD3OXlKM4exomoJUseT5d7vDcTjZEANY7wK1GhwnS/", "funnel_name": "Internal Webinar", "owner_name": "Ariella Irvine"}]}, "2026-11-03": {"total": 6, "funnels": [["Reactivation Scrapers", 4, 67], ["Anthony LinkedIn", 1, 17], ["Google Ads", 1, 17]], "reps": [["Eric Piccione", 1, 1, 2, false], ["Joe Dysert", 1, 0, 1, false], ["Luke Herman", 1, 2, 3, false], ["Robin Perkins", 1, 2, 3, false], ["Shreya Bechra", 1, 0, 1, false], ["Ariella Irvine", 0, 1, 1, false], ["Christian Hartwell", 0, 2, 2, false], ["Scott Seymour", 0, 3, 3, false]], "booked_on": [["2026-10-22", 1, 17], ["2026-10-26", 1, 17], ["2026-10-29", 2, 33], ["2026-10-30", 2, 33]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Damon Blair-Jones", "lead_url": "https://app.close.com/lead/lead_GeaEKEoK9Rl5P0mBjev6aSEDRHEFcWbbwJhjhqQs1Wm/", "funnel_name": "Reactivation Scrapers", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "George Johnson", "lead_url": "https://app.close.com/lead/lead_Avy22EEoj5PnIvVFNpjTnsgs9kaAKuFAyRDXEg45vdm/", "funnel_name": "Internal Webinar", "owner_name": "Luke Herman"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jerry John", "lead_url": "https://app.close.com/lead/lead_TpVIvQz0vFdv0BoQRAZ8GtsmtOYCCOLF89gHfHmOa0s/", "funnel_name": "Internal Webinar", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Julie Robinson", "lead_url": "https://app.close.com/lead/lead_bzchHscqf5KD0tXrhGPgw3hhkEckO6Zr1RR9hNE9WZd/", "funnel_name": "Reactivation Scrapers", "owner_name": "Scott Seymour"}, {"category": "fu", "category_label": "F/U", "lead_name": "Luke Sherwin", "lead_url": "https://app.close.com/lead/lead_ZF2pWHDyBrG7jQtjr966GnsOaIWyUDkYONT5k4bbCBy/", "funnel_name": "Internal Webinar", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Matthew Provard", "lead_url": "https://app.close.com/lead/lead_rP5DDRYtsxp2aIvvz7YOf8nFsSxEEpujAVm3mnuRtDQ/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Natalie Campos", "lead_url": "https://app.close.com/lead/lead_p1dMobYLLQ24xPqeulwhYXeme9LLvFGlD8WoWMwtSrh/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Philip Burrell", "lead_url": "https://app.close.com/lead/lead_X4Qdj0sQ0FxR7hHWX4qo4ePHjPr9orf2DUK4wGyp73u/", "funnel_name": "Internal Webinar", "owner_name": "Scott Seymour"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Debby Ayo", "lead_url": "https://app.close.com/lead/lead_WDZyM1dsJlaEm6iQjyXZVsL5Frp8toHtKp7OrzuJh5g/", "funnel_name": "Internal Webinar", "owner_name": "Christian Hartwell"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Lucretia Hunter", "lead_url": "https://app.close.com/lead/lead_Z8FALtICW7ZHVuEsDIvMP6GYaq3Xhx2UTU1deirM9dT/", "funnel_name": "Internal Webinar", "owner_name": "Eric Piccione"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Marcelus Tobias", "lead_url": "https://app.close.com/lead/lead_kdMicR1l4ZB9el3ov2jbeUahbM6uLNgCqCDYZ967GDw/", "funnel_name": "Internal Webinar", "owner_name": "Ariella Irvine"}]}, "2026-11-04": {"total": 2, "funnels": [["Reactivation Scrapers", 2, 100]], "reps": [["Joe Dysert", 1, 0, 1, false], ["Robin Perkins", 1, 0, 1, false], ["Ariella Irvine", 0, 1, 1, false], ["Christian Hartwell", 0, 3, 3, false], ["Joseph Vaughan", 0, 1, 1, false], ["Scott Seymour", 0, 1, 1, false]], "booked_on": [["2026-10-30", 2, 100]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Dominique Banks", "lead_url": "https://app.close.com/lead/lead_LAaapqfbU1bp58qj4NPlLkMApcMDaEx0LhbgmyWl34f/", "funnel_name": "Internal Webinar", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Houston Hardy", "lead_url": "https://app.close.com/lead/lead_ka19aUhI5MQxHMOYUFiLndV3sIeurqs7wtImG20Un2N/", "funnel_name": "Website", "owner_name": "Joseph Vaughan"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jahnavi Holmes", "lead_url": "https://app.close.com/lead/lead_NfxM4xgmVMuUlXOdAUqZd5eA1vJ7uUNfBoea4MHpGJX/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}, {"category": "fu", "category_label": "F/U", "lead_name": "John Lim", "lead_url": "https://app.close.com/lead/lead_SCfiAJJ7XMl8jyKuWCcDKxjUiS4K3M9NFzgqIme3pik/", "funnel_name": "Reactivation Scrapers", "owner_name": "Scott Seymour"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Natasha Collazo", "lead_url": "https://app.close.com/lead/lead_432GdPuecCgHAiZaWw1DNl7VvMWbmeEJiC1mI3r1qwh/", "funnel_name": "Google Ads", "owner_name": "Christian Hartwell"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Rosanne Hernandez", "lead_url": "https://app.close.com/lead/lead_aD3JMQ7reCjnc07Ady0CTQtdoboMquge7xf02SVs1hT/", "funnel_name": "Internal Webinar", "owner_name": "Christian Hartwell"}]}, "2026-11-06": {"total": 3, "funnels": [["Reactivation Scrapers", 3, 100]], "reps": [["Christian Hartwell", 1, 1, 2, false], ["Joseph Vaughan", 1, 0, 1, false], ["Robin Perkins", 1, 1, 2, false]], "booked_on": [["2026-10-26", 1, 33], ["2026-10-30", 2, 67]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Nelda Flores", "lead_url": "https://app.close.com/lead/lead_t6HOu3ydAbOLQ84eFZLrkACXJkOBOZHIknhZLE1Rvbh/", "funnel_name": "Internal Webinar", "owner_name": "Christian Hartwell"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Josiah Grigg", "lead_url": "https://app.close.com/lead/lead_BAb1qiSHlyTTk5wIMXYMpuyvo29kQXjVbIUfMcOISgK/", "funnel_name": "YouTube", "owner_name": "Robin Perkins"}]}, "2026-11-05": {"total": 1, "funnels": [["Reactivation Scrapers", 1, 100]], "reps": [["Ariella Irvine", 1, 0, 1, false], ["Christian Hartwell", 0, 1, 1, false], ["Robin Perkins", 0, 1, 1, false]], "booked_on": [["2026-10-28", 1, 100]], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Angelica McCree", "lead_url": "https://app.close.com/lead/lead_vOgthWEpZTyz4PFmVWPdX6etTe1FrykQFWR6ZxjvMw4/", "funnel_name": "Internal Webinar", "owner_name": "Christian Hartwell"}, {"category": "resch", "category_label": "Reschedule", "lead_name": "Greg Hale", "lead_url": "https://app.close.com/lead/lead_3JNAhsD77tGxyg6Co1ROyO4BL66OMxpqADi28zBk9MY/", "funnel_name": "Internal Webinar", "owner_name": "Robin Perkins"}]}, "2026-11-09": {"total": 0, "funnels": [], "reps": [["Ariella Irvine", 0, 1, 1, false], ["Christian Hartwell", 0, 1, 1, false], ["Robin Perkins", 0, 1, 1, false]], "booked_on": [], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Bryan Roberts", "lead_url": "https://app.close.com/lead/lead_ygAyhLtCklWC8XN6npV8ZiqJiOFT3LsH4vtYplAtNHW/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}, {"category": "fu", "category_label": "F/U", "lead_name": "Jon Shumway", "lead_url": "https://app.close.com/lead/lead_S6aph8pzBUuj6iCoG3uXSiR7tdln662Y7Y7Wm4Xwsg8/", "funnel_name": "Reactivation Scrapers", "owner_name": "Robin Perkins"}, {"category": "fu", "category_label": "F/U", "lead_name": "Valerie Tindill", "lead_url": "https://app.close.com/lead/lead_wtoN8qLPqJMf9DZowmWAjxVFKnMaUNJ5vJpLBMDYplS/", "funnel_name": "Reactivation Scrapers", "owner_name": "Ariella Irvine"}]}, "2026-11-10": {"total": 0, "funnels": [], "reps": [["Christian Hartwell", 0, 1, 1, false]], "booked_on": [], "non_new_meetings": [{"category": "fu", "category_label": "F/U", "lead_name": "Dale Allman", "lead_url": "https://app.close.com/lead/lead_JO4KafjvMKrGDjs8TwLH23LVIoKTDhfvdoRaFSYN88b/", "funnel_name": "Reactivation Scrapers", "owner_name": "Christian Hartwell"}]}};
+
+    function toggleSetterRows(row) {
+      var chevron = row.querySelector('.chevron');
+      var expanded = row.classList.toggle('expanded');
+      chevron.textContent = expanded ? '▼' : '▶';
+      // Toggle all immediately-following sibling .setter-row elements (until next non-setter row)
+      var next = row.nextElementSibling;
+      while (next && next.classList.contains('setter-row')) {
+        next.style.display = expanded ? '' : 'none';
+        next = next.nextElementSibling;
+      }
+    }
+
+    function showDayDetail(dateStr) {
+      var detail = _dayDetail[dateStr];
+      if (!detail) return;
+      var nonNewCount = (detail.non_new_meetings || []).length;
+      // Allow panel to open if there's any data at all (new calls OR non-new meetings).
+      if (detail.total === 0 && nonNewCount === 0) return;
+
+      var panel = document.getElementById('dayPanel');
+      var overlay = document.getElementById('dayOverlay');
+
+      // Title
+      var d = new Date(dateStr + 'T12:00:00');
+      var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      panel.querySelector('.dp-title').textContent = days[d.getDay()] + ', ' + months[d.getMonth()] + ' ' + d.getDate();
+      // Subtitle: include non-new count alongside new calls when present
+      var subtitle = detail.total + ' new call' + (detail.total === 1 ? '' : 's');
+      if (nonNewCount > 0) subtitle += ' · ' + nonNewCount + ' non-new';
+      panel.querySelector('.dp-subtitle').textContent = subtitle;
+
+      // Funnels — gracefully handle empty (e.g., day with only non-new meetings)
+      var funnelHtml = '';
+      if (detail.funnels && detail.funnels.length > 0) {
+        var maxPct = Math.max.apply(null, detail.funnels.map(function(f){return f[2]}));
+        detail.funnels.forEach(function(f) {
+          var barW = maxPct > 0 ? (f[2] / maxPct * 100) : 0;
+          funnelHtml += '<div class="dp-bar-row">' +
+            '<span class="dp-bar-label">' + f[0] + '</span>' +
+            '<div class="dp-bar-track"><div class="dp-bar-fill" style="width:' + barW + '%"></div></div>' +
+            '<span class="dp-bar-val">' + f[1] + ' (' + f[2] + '%)</span></div>';
+        });
+      } else {
+        funnelHtml = '<div class="dp-coming-soon">No new sales calls on this day.</div>';
+      }
+      document.getElementById('dpFunnels').innerHTML = funnelHtml;
+
+      // Reps — 3-column breakdown: New · F/U+Resch · Total
+      var repHtml = '';
+      if (detail.reps && detail.reps.length > 0) {
+        repHtml += '<div class="dp-rep-header">' +
+          '<span class="dp-rep-header-name"></span>' +
+          '<span class="dp-rep-header-col" title="New sales calls">NEW</span>' +
+          '<span class="dp-rep-header-col" title="Follow-up + Reschedule (all non-new meetings). Dash means self-sourcing rep — non-new meetings are not tracked toward team totals.">F/U+R</span>' +
+          '<span class="dp-rep-header-col" title="Total meetings (clamped for self-sourcing reps to equal their new-call count)">TOT</span>' +
+          '</div>';
+        detail.reps.forEach(function(r) {
+          // r = [name, new, fu_resch_other, total, is_clamped]
+          var isClamped = r[4];
+          var fuDisplay = isClamped ? '—' : r[2];
+          var fuClass   = isClamped ? 'is-clamped' : (r[2] === 0 ? 'is-zero' : '');
+          repHtml += '<div class="dp-rep-row">' +
+            '<span class="dp-rep-name">' + r[0] + '</span>' +
+            '<span class="dp-rep-num is-new' + (r[1] === 0 ? ' is-zero' : '') + '">' + r[1] + '</span>' +
+            '<span class="dp-rep-num ' + fuClass + '">' + fuDisplay + '</span>' +
+            '<span class="dp-rep-num' + (r[3] === 0 ? ' is-zero' : '') + '">' + r[3] + '</span>' +
+            '</div>';
+        });
+      } else {
+        repHtml = '<div class="dp-coming-soon">No rep activity on this day.</div>';
+      }
+      document.getElementById('dpReps').innerHTML = repHtml;
+
+      // Booked on
+      var bookedHtml = '<table class="dp-booked-table">';
+      if (detail.booked_on && detail.booked_on.length > 0) {
+        detail.booked_on.forEach(function(b) {
+          var label = b[0];
+          if (label !== 'Unknown') {
+            var bd = new Date(label + 'T12:00:00');
+            label = days[bd.getDay()] + ' ' + (bd.getMonth()+1) + '/' + bd.getDate();
+          }
+          bookedHtml += '<tr><td>' + label + '</td><td>' + b[1] + ' calls</td><td>' + b[2] + '%</td></tr>';
+        });
+      } else {
+        bookedHtml += '<tr><td colspan="3" style="color:#aaa;">No booking date data</td></tr>';
+      }
+      bookedHtml += '</table>';
+      document.getElementById('dpBooked').innerHTML = bookedHtml;
+
+      // F/U & Reschedule Details — starts collapsed
+      var nonNew = detail.non_new_meetings || [];
+      var countEl = document.getElementById('dpNonNewCount');
+      var bodyEl  = document.getElementById('dpNonNewDetails');
+      var chevEl  = document.getElementById('dpNonNewChevron');
+      countEl.textContent = '(' + nonNew.length + ')';
+      bodyEl.style.display = 'none';
+      chevEl.textContent = '▶';
+      if (nonNew.length === 0) {
+        bodyEl.innerHTML = '<div class="dp-coming-soon">No follow-up or reschedule meetings on this day.</div>';
+      } else {
+        var nnHtml = '<div class="dp-nonnew-list">';
+        nonNew.forEach(function(m) {
+          var catClass = 'dp-cat-' + m.category;
+          var safeName = (m.lead_name || '(unknown lead)')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          var safeFunnel = (m.funnel_name || '(no funnel)')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          var safeOwner = (m.owner_name || '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          nnHtml += '<div class="dp-nonnew-row">' +
+            '<span class="dp-cat-pill ' + catClass + '">' + m.category_label + '</span> ' +
+            '<a href="' + m.lead_url + '" target="_blank" rel="noopener" class="dp-lead-link">' + safeName + '</a> ' +
+            '<span class="dp-nonnew-sep">|</span> ' +
+            '<span class="dp-nonnew-meta">' + safeFunnel + '</span> ' +
+            '<span class="dp-nonnew-sep">|</span> ' +
+            '<span class="dp-nonnew-meta">' + safeOwner + '</span>' +
+            '</div>';
+        });
+        nnHtml += '</div>';
+        bodyEl.innerHTML = nnHtml;
+      }
+
+      panel.style.display = 'block';
+      overlay.style.display = 'block';
+    }
+
+    function toggleNonNewDetails() {
+      var body = document.getElementById('dpNonNewDetails');
+      var chev = document.getElementById('dpNonNewChevron');
+      var open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      chev.textContent  = open ? '▶' : '▼';
+    }
+
+    function closeDayPanel() {
+      document.getElementById('dayPanel').style.display = 'none';
+      document.getElementById('dayOverlay').style.display = 'none';
+    }
+
+    // ── Hero Card Row (Phase 2) ──────────────────────────────────────────
+    var _cardData = {};
+    var _datesList = [];
+    var _focusedIdx = 0;
+
+    function fmtMaybe(v) { return (v === null || v === undefined) ? '–' : v; }
+    function fmtPct(v, cls) {
+      if (v === null || v === undefined) {
+        return '<span class="hc-footer-value tgt-na">N/A</span>';
+      }
+      return '<span class="hc-footer-value ' + (cls || '') + '">' + v.toFixed(1) + '%</span>';
+    }
+
+    function buildCardHTML(idx) {
+      if (idx < 0 || idx >= _datesList.length) return '';
+      var ds = _datesList[idx];
+      var c = _cardData[ds];
+      if (!c) return '';
+
+      var classes = ['hero-card'];
+      if (c.is_today)  classes.push('is-today');
+      if (c.is_past)   classes.push('is-past');
+      if (c.is_future) classes.push('is-future');
+
+      var dayLabel = c.is_today ? '► TODAY' : c.weekday_short.toUpperCase() + ' ' + c.month_day;
+
+      var openVal   = (c.open_slots === null || c.open_slots === undefined) ? '–' : c.open_slots;
+      var missedVal = (c.missed     === null || c.missed     === undefined) ? '–' : c.missed;
+
+      // Footer label includes the actual target value when available (e.g. "New Meetings Goal % (44)").
+      // Weekends have no target, so just show the label.
+      var goalLabel = (c.target !== null && c.target !== undefined)
+        ? 'New Meetings Goal % (' + c.target + ')'
+        : 'New Meetings Goal %';
+
+      return '<div class="' + classes.join(' ') + '">' +
+        '<div class="hc-header">' +
+          '<div class="hc-header-text">' +
+            '<div class="hc-day-label">' + dayLabel + '</div>' +
+            '<div class="hc-title">New Meetings Booked</div>' +
+          '</div>' +
+          '<div class="hc-headline">' + c.new_meetings + '</div>' +
+        '</div>' +
+        '<hr class="hc-sep">' +
+        '<div class="hc-section">' +
+          '<div class="hc-row">' +
+            '<span class="hc-row-label">F/U Meetings</span>' +
+            '<span class="hc-row-value">' + c.fu + '</span>' +
+          '</div>' +
+          '<div class="hc-row">' +
+            '<span class="hc-row-label">Resch. Meetings</span>' +
+            '<span class="hc-row-value">' + c.resch + '</span>' +
+          '</div>' +
+          '<div class="hc-row hc-row-total">' +
+            '<span class="hc-row-label">Total Meetings Booked</span>' +
+            '<span class="hc-row-value">' + c.total_meetings + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="hc-section">' +
+          '<div class="hc-row hc-row-parent">' +
+            '<span class="hc-row-label">Open Calendar Slots</span>' +
+            '<span class="hc-row-value">' + openVal + '</span>' +
+          '</div>' +
+          '<div class="hc-row hc-row-child hc-row-missed">' +
+            '<span class="hc-row-label">Booking Window Missed</span>' +
+            '<span class="hc-row-value">' + missedVal + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="hc-footer">' +
+          '<span class="hc-footer-label">' + goalLabel + '</span>' +
+          fmtPct(c.target_pct, c.target_class) +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderCards() {
+      document.getElementById('hero-slot-prev').innerHTML    = buildCardHTML(_focusedIdx - 1);
+      document.getElementById('hero-slot-current').innerHTML = buildCardHTML(_focusedIdx);
+      document.getElementById('hero-slot-next').innerHTML    = buildCardHTML(_focusedIdx + 1);
+      var leftArrow  = document.querySelector('.hero-arrow-left');
+      var rightArrow = document.querySelector('.hero-arrow-right');
+      if (leftArrow)  leftArrow.disabled  = (_focusedIdx <= 0);
+      if (rightArrow) rightArrow.disabled = (_focusedIdx >= _datesList.length - 1);
+    }
+
+    function shiftCardFocus(delta) {
+      var n = _focusedIdx + delta;
+      if (n < 0 || n >= _datesList.length) return;
+      _focusedIdx = n;
+      renderCards();
+    }
+
+    function setCardFocus(idx) {
+      if (idx < 0 || idx >= _datesList.length) return;
+      _focusedIdx = idx;
+      renderCards();
+    }
+
+    function openFocusedDayDetail() {
+      var ds = _datesList[_focusedIdx];
+      if (ds) showDayDetail(ds);
+    }
+
+    // Boot the hero card row: read embedded data + initial focus on today (or end of list)
+    (function initHeroCards() {
+      var row = document.querySelector('.hero-card-row');
+      if (!row) return;
+      try {
+        _cardData = JSON.parse(row.getAttribute('data-card-data') || '{}');
+      } catch (e) {
+        console.error('Hero card data parse failed', e);
+        return;
+      }
+      _datesList = Object.keys(_cardData).sort();
+      // Find today's index; fall back to the last available date
+      _focusedIdx = _datesList.length - 1;
+      for (var i = 0; i < _datesList.length; i++) {
+        if (_cardData[_datesList[i]].is_today) { _focusedIdx = i; break; }
+      }
+      renderCards();
+    })();
+    </script>
+    
+</body></html>
