@@ -6,6 +6,13 @@ on:
 permissions:
   contents: write
 
+# Coordinate all workflows that publish to main. Runs wait their turn, then
+# explicitly check out the current main tip before building or committing.
+concurrency:
+  group: call-capacity-dashboard-main-publish
+  queue: max
+  cancel-in-progress: false
+
 jobs:
   update-dashboard:
     runs-on: ubuntu-latest
@@ -14,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v5
