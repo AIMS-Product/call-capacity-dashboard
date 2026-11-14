@@ -15,8 +15,9 @@ Optional:
 """
 
 import argparse
+import json
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -47,12 +48,16 @@ def load_email_modules():
     sys.path.insert(0, str(SCRIPT_DIR))
     try:
         import update_dashboard as ud
-        from test_eod_email import build_minimal_rolling_data
     except ModuleNotFoundError as e:
         print(f"Missing Python dependency: {e.name}")
         print("Install local dependencies with: python -m pip install requests")
         sys.exit(1)
-    return ud, build_minimal_rolling_data
+    return ud
+
+
+def build_preview_rolling_data(ud, today):
+    from test_eod_email import build_minimal_rolling_data
+    return build_minimal_rolling_data(today), None
 
 
 def parse_report_date(raw, pacific):
@@ -74,7 +79,7 @@ def resolve_output_path(raw_path):
 
 def main():
     args = parse_args()
-    ud, build_minimal_rolling_data = load_email_modules()
+    ud = load_email_modules()
     if not ud.CLOSE_API_KEY:
         print("CLOSE_API_KEY not set.")
         sys.exit(1)
@@ -84,18 +89,22 @@ def main():
     plain_path = resolve_output_path(args.plain_output)
 
     print(f"Generating local EOD email preview for {today}...")
-    rolling_data = build_minimal_rolling_data(today)
-    data = ud.build_eod_data(rolling_data, today)
+    roster = ud.load_email_roster(today)
+    rolling_data, snapshot = build_preview_rolling_data(ud, today)
+    data = ud.build_eod_data(rolling_data, today, lane2_roster=roster)
     subject, plain, html = ud.format_eod_email(data)
 
     html_path.parent.mkdir(parents=True, exist_ok=True)
     plain_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.write_text(html, encoding="utf-8")
     plain_path.write_text(f"Subject: {subject}\n\n{plain}", encoding="utf-8")
+    roster_path = html_path.with_suffix(".roster.json")
+    roster_path.write_text(json.dumps(data["lane2_roster"], indent=2) + "\n", encoding="utf-8")
 
     print(f"Subject: {subject}")
     print(f"HTML preview written to: {html_path}")
     print(f"Plain-text preview written to: {plain_path}")
+    print(f"Lakebase roster evidence written to: {roster_path}")
     print("No email was sent.")
 
 

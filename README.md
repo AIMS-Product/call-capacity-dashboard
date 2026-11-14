@@ -86,12 +86,29 @@ GitHub Pages serves index.html
 To preview the EOD email without sending it:
 
 ```bash
-python -m pip install requests
+python -m pip install requests 'psycopg[binary]'
 export CLOSE_API_KEY=...
 python preview_eod_email.py
 ```
 
 This writes `eod_preview.html` and `eod_preview.txt` locally using the same formatter as the live EOD email. Add `--date YYYY-MM-DD` to preview a specific report date.
+
+The EOD scraper/setter tables always read SteelTrap's Lakebase roster. Membership,
+Close identities, offers, saved booking goals, aliases and title rules come from
+verified accepted configuration. Latest saved visibility/departures can remove reps
+immediately; new reporting profiles wait for acceptance. Former reps' recorded
+activity is retained separately, with no current goal. A regeneration uses current
+saved visibility and the requested reporting date, rather than reconstructing past
+roster edits. Default daily booking goals follow SteelTrap's ramp schedule.
+
+Configure `LAKEBASE_HOST`, `LAKEBASE_DATABASE`, `LAKEBASE_USER`, and
+`LAKEBASE_PASSWORD` in the runtime environment or matching GitHub repository
+secrets. All EOD workflows install psycopg and pass those variables. The local
+master runner also requires and passes them only to jobs that need the roster.
+Lakebase queries use tenant-scoped, read-only transactions. Missing credentials or
+an invalid/unavailable roster stop email delivery; there is no static-roster fallback.
+The preview also writes a `.roster.json` file recording the source version and names.
+
 
 ---
 

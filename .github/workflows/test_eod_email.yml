@@ -19,10 +19,14 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests 'psycopg[binary]'
 
       - name: Send EOD email preview
         env:
+          LAKEBASE_HOST: ${{ secrets.LAKEBASE_HOST }}
+          LAKEBASE_DATABASE: ${{ secrets.LAKEBASE_DATABASE }}
+          LAKEBASE_USER: ${{ secrets.LAKEBASE_USER }}
+          LAKEBASE_PASSWORD: ${{ secrets.LAKEBASE_PASSWORD }}
           CLOSE_API_KEY:      ${{ secrets.CLOSE_API_KEY }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_FROM:         ${{ secrets.EMAIL_FROM }}
