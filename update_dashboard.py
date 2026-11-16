@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 import requests
 from lane2_eod_roster import load_email_roster
+from appointment_closer import MeetingSnapshot
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -762,6 +763,7 @@ session = requests.Session()
 session.auth = (CLOSE_API_KEY, "")
 session.headers.update({"Content-Type": "application/json"})
 _api_call_count = 0
+_meeting_snapshot = None
 
 def close_get(endpoint, params=None):
     """GET with resilience (2026-09-15): retries 429 (Retry-After), 5xx, and
@@ -769,6 +771,8 @@ def close_get(endpoint, params=None):
     backoff. One flaky page out of 200+ used to abort whole window fetches —
     which made the Reactivation Scrapers funnel vanish from the dashboard."""
     global _api_call_count
+    if _meeting_snapshot is not None and endpoint.strip("/") == "activity/meeting":
+        return _meeting_snapshot.read_page(params)
     time.sleep(API_THROTTLE)
     url = f"{CLOSE_API_BASE}/{endpoint}"
     last_exc = None
@@ -822,7 +826,10 @@ def fetch_all_meetings():
     skip = 0
     while True:
         data = close_get("activity/meeting", {"_skip": skip, "_limit": 100})
-        all_meetings.extend(data.get("data", []))
+        batch = data.get("data", [])
+        if data.get("has_more") and not batch:
+            raise ValueError("Complete meeting history contains an empty nonterminal page")
+        all_meetings.extend(batch)
         if len(all_meetings) % 1000 == 0:
             log(f"   ... {len(all_meetings)} meetings fetched")
         if not data.get("has_more", False):
@@ -1413,7 +1420,7 @@ def build_day_detail(valid_meetings, booking_dates, lane_rep_names, meeting_titl
     return result
 
 
-def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_label="", rep_total_meetings=None, rep_meetings_by_category=None, scraper_meetings=None):
+def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_label="", rep_total_meetings=None, rep_meetings_by_category=None, scraper_meetings=None, appointment_meetings=None):
     """Build dashboard data from field-based lead query.
     scraper_meetings: optional list from resolve_scraper_meetings(). When given,
         Next Steps bookings are counted per meeting date. Pearl's Session title
@@ -1421,6 +1428,9 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
         legacy FSCBD counting applies to every funnel.
     field_leads: list of lead dicts from fetch_field_leads (or similar).
     lane_reps: set of user IDs to filter by (if None, no lane filter applied).
+    appointment_meetings: complete run history for call-closer attribution.
+        First-date eligibility, funnel, status and scraper counting are unchanged.
+        Unresolved calls are logged for review without a lead-owner fallback.
     lane_label: label for logging (e.g., "Lane 1", "Lane 2").
     rep_total_meetings: optional {user_id: {date: count}} from fetch_rep_total_meetings()
                         for the "Total Calls" reconciliation row in rep details.
@@ -1454,8 +1464,13 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
             status_excluded += 1
             continue
 
-        # Lane filter — only count leads owned by reps in this lane
+        # Keep the original first-date rules; resolve credit from that call's closer.
         lead_owner = (lead.get(FIELD_LEAD_OWNER) or "").strip()
+        if appointment_meetings is not None:
+            lead_owner, resolution = appointment_meetings.first_call_closer(
+                lead["id"], lead.get(FIELD_FIRST_SALES_CALL))
+            if resolution != "resolved":
+                log(f"  ⚠ Call closer review: {lead['id']} · {resolution}")
         if lane_reps and lead_owner not in lane_reps:
             lane_excluded += 1
             continue
@@ -1532,7 +1547,7 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
     # No lead-owner gate here: attribution is by SETTER, and these meetings sit on
     # closer calendars regardless of who owns the lead record. The lead-status
     # exclusions (Canceled by Lead / Outside US) still apply. rep_data (per-rep
-    # breakdown) only credits owners in this lane, since that view is owner-based.
+    # breakdown) only credits the meeting closer when present in this lane.
     next_steps_injected = 0
     for sm in (scraper_meetings or []):
         d = sm["date"]
@@ -1546,6 +1561,13 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
         all_funnels_seen.add(funnel)
         daily_data[d]["funnels"][funnel] = daily_data[d]["funnels"].get(funnel, 0) + 1
         owner = sm.get("lead_owner") or ""
+        if appointment_meetings is not None:
+            if "appointment_closer" in sm:
+                owner = sm["appointment_closer"] or ""
+            else:
+                owner, resolution = appointment_meetings.scraper_closer(sm)
+                if resolution != "resolved":
+                    log(f"  ⚠ Scraper closer review: {sm['lead_id']} · {resolution}")
         if lane_reps and owner in rep_data:
             rep_data[owner][d][funnel] = rep_data[owner][d].get(funnel, 0) + 1
         if funnel == "Reactivation Scrapers":
@@ -1566,7 +1588,7 @@ def build_dashboard_data(field_leads, dates, today=None, lane_reps=None, lane_la
     if status_excluded > 0:
         log(f"   ⚠ Excluded {status_excluded} leads (status: Canceled/Outside US)")
     if lane_excluded > 0:
-        log(f"   ⚠ Excluded {lane_excluded} leads (Lead Owner not in {lane_label})")
+        log(f"   ⚠ Excluded {lane_excluded} leads (credited closer not in {lane_label})")
     log(f"   📊 {len(valid_meetings)} {lane_label} leads counted across window")
 
     # Clamp Total Meetings for reps in NEW_CALLS_ONLY_REPS: their displayed total
@@ -3596,7 +3618,7 @@ def fetch_meetings_in_window(start_date, end_date):
             if not data.get("has_more"):
                 break
             skip += len(batch) or 100
-            if skip > 30000:  # safety valve — Close's loose date filter can over-return
+            if skip > 30000 and _meeting_snapshot is None:  # safety valve — Close's loose date filter can over-return
                 log(f"  ⚠ fetch_meetings_in_window: hit skip cap at {skip}; may miss meetings")
                 _WINDOW_FETCH_COMPLETE = False
                 return results  # truncated ⇒ treated as incomplete by the cache logic
@@ -3699,6 +3721,8 @@ def resolve_scraper_meetings(meetings, lead_index):
             "title":        m.get("title") or "",
             "lead_id":      m["lead_id"],
             "setter":       setter,
+            "appointment_closer": m.get("user_id") or "",
+            "meeting_id": m.get("meeting_id"),
             "lead_owner":   (lead.get(FIELD_LEAD_OWNER) or "").strip(),
             "status_id":    lead.get("status_id"),
             "display_name": lead.get("display_name", ""),
@@ -4861,7 +4885,7 @@ def send_eod_email(rolling_data, today, recipients=None):
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
-    global _api_call_count
+    global _api_call_count, _meeting_snapshot
     if not CLOSE_API_KEY:
         log("❌ Error: CLOSE_API_KEY environment variable is not set."); sys.exit(1)
 
@@ -4884,6 +4908,8 @@ def main():
     rolling_end = today + timedelta(days=10)
     rolling_dates = [rolling_start + timedelta(days=i) for i in range(14)]
     field_leads = fetch_field_leads(rolling_start, rolling_end)
+    _meeting_snapshot = None
+    _meeting_snapshot = MeetingSnapshot(fetch_all_meetings())
 
     # Build lead_id → funnel map so fetch_rep_total_meetings can apply funnel restrictions
     # (e.g., Joe Dysert's overflow Internal Webinar calls only)
@@ -4945,7 +4971,7 @@ def main():
     )
 
     log("\n── Team (single-team mode) ──")
-    team_data = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=ALL_LANE_REPS, lane_label="Team", rep_total_meetings=rep_total_meetings, rep_meetings_by_category=rep_meetings_by_category, scraper_meetings=scraper_meetings)
+    team_data = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=ALL_LANE_REPS, lane_label="Team", rep_total_meetings=rep_total_meetings, rep_meetings_by_category=rep_meetings_by_category, scraper_meetings=scraper_meetings, appointment_meetings=_meeting_snapshot)
 
     # Ownership hygiene: email NEW meetings on non-closer-owned leads (once each)
     check_noncloser_owned_meetings(team_data, today)
@@ -5029,7 +5055,7 @@ def main():
     # and revert the two uses of lane1_booked further below (in the Calendly loop
     # and inside generate_lane_content) to the combined `booked` value.
     log("\n── Lane 1 booked (for Booking Window Missed metric) ──")
-    _lane1_data_for_missed = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=LANE_1_REPS, lane_label="Lane 1 (missed)", scraper_meetings=scraper_meetings)
+    _lane1_data_for_missed = build_dashboard_data(field_leads, rolling_dates, today=today, lane_reps=LANE_1_REPS, lane_label="Lane 1 (missed)", scraper_meetings=scraper_meetings, appointment_meetings=_meeting_snapshot)
     lane1_booked_by_date = {d: _lane1_data_for_missed["daily_data"][d]["booked"] for d in rolling_dates}
     team_data["lane1_booked_by_date"] = lane1_booked_by_date
     # ────────────────────────────────────────────────────────────────────────────
@@ -5128,7 +5154,7 @@ def main():
         w_leads = fetch_field_leads(pm, ps + timedelta(days=1))
         w_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pm, ps),
                                              {l.get("id"): l for l in w_leads if l.get("id")})
-        wdata = build_dashboard_data(w_leads, wd, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=w_scraper)
+        wdata = build_dashboard_data(w_leads, wd, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=w_scraper, appointment_meetings=_meeting_snapshot)
         # Apply Calendly capacity from cache to archive
         for d in wd:
             if d in max_cache:
@@ -5148,7 +5174,7 @@ def main():
         m_leads = fetch_field_leads(pms, today)
         m_scraper = resolve_scraper_meetings(fetch_meetings_in_window(pms, pme),
                                              {l.get("id"): l for l in m_leads if l.get("id")})
-        mdata = build_dashboard_data(m_leads, md, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=m_scraper)
+        mdata = build_dashboard_data(m_leads, md, lane_reps=ALL_LANE_REPS, lane_label="Team", scraper_meetings=m_scraper, appointment_meetings=_meeting_snapshot)
         # Apply Calendly capacity from cache to archive
         for d in md:
             if d in max_cache:

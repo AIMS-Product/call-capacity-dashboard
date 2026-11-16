@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: pip install requests 'psycopg[binary]'
 
+      - name: Verify dashboard attribution rules
+        run: python -m unittest test_appointment_closer test_instagram_next_steps_attribution test_lane2_eod_roster -q
+
       - name: Run dashboard update
         env:
           LAKEBASE_HOST: ${{ secrets.LAKEBASE_HOST }}
