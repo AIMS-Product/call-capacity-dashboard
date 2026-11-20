@@ -5,10 +5,7 @@ name: Dedupe Bookings
 # Reuses the dashboard repo's existing secrets — no new infra.
 
 on:
-  schedule:
-    # Every 5 minutes. GitHub's minimum granularity; runs may be delayed a few
-    # minutes under load, which is fine for a reconciliation guard.
-    - cron: "*/5 * * * *"
+  # cron-job.org dispatches the sweep every two hours using this same entry point.
   workflow_dispatch: {}
 
 # Read-only job: no commits, so no elevated permissions needed.

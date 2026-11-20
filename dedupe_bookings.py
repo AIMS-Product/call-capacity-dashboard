@@ -39,7 +39,7 @@ import requests
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-LOOKAHEAD_DAYS = 14          # how far forward to scan for duplicate upcoming meetings
+LOOKAHEAD_DAYS = 7           # how far forward to scan for duplicate upcoming meetings
 KEEP_POLICY = "earliest"     # keep earliest booked, flag later ones (team decision)
 AUTO_CANCEL = False          # v1 = notify only. True => cancel flagged bookings via API
 SEND_ALL_CLEAR = False       # if True, email even when no duplicates are found
